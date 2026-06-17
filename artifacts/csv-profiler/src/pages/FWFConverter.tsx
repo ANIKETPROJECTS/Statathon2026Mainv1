@@ -274,7 +274,7 @@ export default function FWFConverter() {
   return (
     <div className="space-y-8">
       {/* Step indicator */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex items-center justify-center gap-3 flex-wrap">
         {(["Upload layout", "Upload data file", "Convert", "Anonymize & download"] as const).map((label, idx) => {
           const n = idx + 1;
           const done =
@@ -365,7 +365,7 @@ export default function FWFConverter() {
             <div className="space-y-4">
               <SuccessBadge text={`${layoutFileName} — ${fields.length} fields${layoutResult.sheetName ? ` (${layoutResult.sheetName})` : ""}`} />
               {layoutResult.warnings.length > 0 && <WarnBox message={layoutResult.warnings.join(" ")} />}
-              <div className="overflow-auto max-h-72 rounded-xl border border-gray-200">
+              <div className="overflow-auto max-h-[480px] rounded-xl border border-gray-200">
                 <table className="w-full text-sm border-collapse">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>{["#", "Variable", "Full Name", "Start", "End", "Len"].map((h) => (
@@ -717,9 +717,9 @@ function ProgressBar({ pct, label, icon }: { pct: number; label: string; icon?: 
 
 function StepBadge({ n, label, active, done }: { n: number; label: string; active: boolean; done: boolean }) {
   return (
-    <div className={`flex items-center gap-2 text-sm font-semibold ${active ? "text-black" : done ? "text-emerald-600" : "text-gray-400"}`}>
-      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${active ? "bg-black text-white" : done ? "bg-emerald-100 text-emerald-600" : "bg-gray-100 text-gray-400"}`}>
-        {done ? <CheckCircle2 className="w-3.5 h-3.5" /> : n}
+    <div className={`flex items-center gap-2.5 text-base font-semibold ${active ? "text-black" : done ? "text-emerald-700" : "text-gray-400"}`}>
+      <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${active ? "bg-black text-white" : done ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-400"}`}>
+        {done ? <CheckCircle2 className="w-4 h-4" /> : n}
       </span>
       {label}
     </div>

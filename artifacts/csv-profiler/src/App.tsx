@@ -20,11 +20,9 @@ function AppLayout() {
     <div className="min-h-screen bg-white">
       <header className="border-b border-gray-200 bg-white px-8 py-4">
         <div className="max-w-[1400px] mx-auto flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-black flex items-center justify-center">
-            <ArrowLeftRight className="w-4 h-4 text-white" />
-          </div>
+          <img src={`${import.meta.env.BASE_URL}airavata-logo.png`} alt="Airavata logo" className="w-10 h-10 object-contain" />
           <div>
-            <span className="text-xl font-semibold text-black tracking-tight">Fixed-Width → CSV Converter</span>
+            <span className="text-xl font-semibold text-black tracking-tight">AIRAVATA DEA</span>
             <p className="text-sm text-gray-500 leading-none mt-0.5">Convert, anonymize &amp; decrypt fixed-width data files</p>
           </div>
         </div>
