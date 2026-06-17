@@ -40,10 +40,91 @@ export interface DataProfile {
   totalRows: number;
   totalColumns: number;
   fileSize?: number;
-  totalRecordLength: number; // sum of all field widths
+  totalRecordLength: number;
   columns: ColumnLayout[];
   previewRows: Record<string, string>[];
 }
+
+// ---------------------------------------------------------------------------
+// NSSO / HCES Questionnaire Reference Dictionary
+// Key = column name normalized to lowercase with all non-alphanumeric chars
+// stripped. This lets us match "Sample_SU_No", "Sample SU No.", "sampleSUNo"
+// all to the same entry.
+// Values from Layout_HCES_2023-24.xlsx — the official NSSO questionnaire.
+// ---------------------------------------------------------------------------
+interface QRef { sec: string; item: string; col: string }
+
+const HCES_QREF: Record<string, QRef> = {
+  // ── Level 01 (Section 1 and 1_1) ──────────────────────────────────────
+  "samplesuno":                      { sec: "1", item: "1.7",  col: "" },
+  "samplesurveyunitno":              { sec: "1", item: "1.7",  col: "" },
+  "samplesurveyunit":                { sec: "1", item: "1.7",  col: "" },
+  "samplesubdivisionno":             { sec: "1", item: "1.10", col: "" },
+  "samplesubdivno":                  { sec: "1", item: "1.10", col: "" },
+  "samplesubdivision":               { sec: "1", item: "1.10", col: "" },
+  "secondstagestratum":              { sec: "1", item: "1.11", col: "" },
+  "secondstagestraumno":             { sec: "1", item: "1.11", col: "" },
+  "secondstageStratumno":            { sec: "1", item: "1.11", col: "" },
+  "secondstagestratumno":            { sec: "1", item: "1.11", col: "" },
+  "samplehouseholdno":               { sec: "1", item: "1.12", col: "" },
+  "samplehhldno":                    { sec: "1", item: "1.12", col: "" },
+  "samplehhlno":                     { sec: "1", item: "1.12", col: "" },
+  "samplehhno":                      { sec: "1", item: "1.12", col: "" },
+  "surveycode":                      { sec: "1", item: "1.13", col: "" },
+  "reasonforsubstitutioncode":       { sec: "1", item: "1.14", col: "" },
+  "reasonforsubstitution":           { sec: "1", item: "1.14", col: "" },
+  "reasonsubstitution":              { sec: "1", item: "1.14", col: "" },
+  "reasonforsubcode":                { sec: "1", item: "1.14", col: "" },
+  "reasonforsubcodes":               { sec: "1", item: "1.14", col: "" },
+
+  // ── Level 02 (Section 3 — Household characteristics) ──────────────────
+  "religion":                        { sec: "3", item: "3.1",  col: "" },
+  "socialgroup":                     { sec: "3", item: "3.2",  col: "" },
+  "castecategory":                   { sec: "3", item: "3.2",  col: "" },
+  "householdsize":                   { sec: "3", item: "3.3",  col: "" },
+  "hhsize":                          { sec: "3", item: "3.3",  col: "" },
+  "nopersons":                       { sec: "3", item: "3.3",  col: "" },
+  "principalincome":                 { sec: "3", item: "3.4",  col: "" },
+  "principalsource":                 { sec: "3", item: "3.4",  col: "" },
+  "nhh":                             { sec: "3", item: "3.5",  col: "" },
+  "numberofhouseholds":              { sec: "3", item: "3.5",  col: "" },
+  "landpossession":                  { sec: "3", item: "3.6",  col: "" },
+  "landpossessed":                   { sec: "3", item: "3.6",  col: "" },
+
+  // ── Level 03 (Section 4 — Demographic particulars) ────────────────────
+  "serialno":                        { sec: "4", item: "4.1",  col: "" },
+  "membersno":                       { sec: "4", item: "4.1",  col: "" },
+  "relation":                        { sec: "4", item: "4.2",  col: "" },
+  "relationtohh":                    { sec: "4", item: "4.2",  col: "" },
+  "relationtohead":                  { sec: "4", item: "4.2",  col: "" },
+  "gender":                          { sec: "4", item: "4.3",  col: "" },
+  "sex":                             { sec: "4", item: "4.3",  col: "" },
+  "age":                             { sec: "4", item: "4.4",  col: "" },
+  "ageyears":                        { sec: "4", item: "4.4",  col: "" },
+  "maritalstatus":                   { sec: "4", item: "4.5",  col: "" },
+  "educationlevel":                  { sec: "4", item: "4.6",  col: "" },
+  "generaleducation":                { sec: "4", item: "4.6",  col: "" },
+  "technicaltraining":               { sec: "4", item: "4.7",  col: "" },
+  "activitycode":                    { sec: "4", item: "4.8",  col: "" },
+  "principalactivity":               { sec: "4", item: "4.8",  col: "" },
+  "activitystatus":                  { sec: "4", item: "4.8",  col: "" },
+  "industrycode":                    { sec: "4", item: "4.9",  col: "" },
+  "ncocode":                         { sec: "4", item: "4.10", col: "" },
+  "occupationcode":                  { sec: "4", item: "4.10", col: "" },
+  "typeofjob":                       { sec: "4", item: "4.11", col: "" },
+  "employmentstatus":                { sec: "4", item: "4.11", col: "" },
+};
+
+function normalizeColName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function lookupQRef(name: string): QRef {
+  const key = normalizeColName(name);
+  return HCES_QREF[key] ?? { sec: "", item: "", col: "" };
+}
+
+// ---------------------------------------------------------------------------
 
 function detectType(sample: string[]): ColumnType {
   const nonEmpty = sample.filter((v) => v !== "");
@@ -66,12 +147,11 @@ function detectType(sample: string[]): ColumnType {
 }
 
 const MULTIPLIER_KEYWORDS = ["multiplier", "weight", "wgt", "wt", "factor", "grossing"];
-const COMMON_ID_KEYWORDS = ["id", "serial", "no", "number", "household", "survey", "hh", "fsu", "ssu", "psu", "stratum", "district", "region", "state", "sector", "level", "round", "schedule", "block", "village", "sample"];
+const COMMON_ID_KEYWORDS = ["serial", "fsu", "ssu", "psu", "household", "hh"];
 
 function isMultiplierColumn(name: string, isLast: boolean): boolean {
   const lower = name.toLowerCase();
   if (MULTIPLIER_KEYWORDS.some((kw) => lower.includes(kw))) return true;
-  // Last column heuristic: if name looks like a weight/multiplier field
   if (isLast && lower.includes("mult")) return true;
   return false;
 }
@@ -91,38 +171,24 @@ function inferRemarks(
   totalCount: number,
   isLast: boolean
 ): string {
-  // Single fixed value across all rows → 'VALUE' Generated
   if (uniqueCount === 1 && nonNullValues.length > 0) {
     const val = topValues[0]?.value ?? "";
     return `'${val}' Generated`;
   }
 
-  // Multiplier / weight column (by name or last-column convention)
   if (isMultiplierColumn(name, isLast) && type === "numeric") {
     return "Final weight/multiplier";
   }
 
-  // Common-ID field (household identifier component)
   if (isCommonIdColumn(name)) {
-    const lower = name.toLowerCase();
-    if (
-      lower.includes("serial") ||
-      lower.includes("fsu") ||
-      lower.includes("ssu") ||
-      lower.includes("hh") ||
-      lower.includes("household")
-    ) {
-      return "**Common-ID**";
-    }
+    return "**Common-ID**";
   }
 
-  // High null rate → blank generated note
   const nullRate = totalCount > 0 ? nullCount / totalCount : 0;
   if (nullRate > 0.8) {
     return "Blank when not applicable";
   }
 
-  // Moderate nulls with few unique values
   if (nullCount > 0 && uniqueCount <= 5) {
     return "If not selected blank generated";
   }
@@ -180,9 +246,8 @@ export function profileData(
     const type = detectType(nonNullValues.slice(0, 200));
     const { topValues, uniqueCount } = computeTopValues(nonNullValues);
 
-    // Field width = max string length of actual data values (NOT the column name).
-    // Exception: Multiplier/weight columns always get 15 bytes (NSSO convention).
-    let fieldWidth = 1; // minimum 1 byte
+    // Multiplier columns always get 15 bytes (NSSO convention)
+    let fieldWidth = 1;
     if (isMultiplierColumn(name, isLast) && type === "numeric") {
       fieldWidth = 15;
     } else {
@@ -194,22 +259,18 @@ export function profileData(
     const sampleValues = Array.from(new Set(nonNullValues.slice(0, 5)));
 
     const remarks = inferRemarks(
-      name,
-      nonNullValues,
-      topValues,
-      type,
-      nullCount,
-      uniqueCount,
-      totalCount,
-      isLast
+      name, nonNullValues, topValues, type, nullCount, uniqueCount, totalCount, isLast
     );
+
+    // Look up Sec / Item / Col from the NSSO questionnaire dictionary
+    const qref = lookupQRef(name);
 
     const col: ColumnLayout = {
       srlNo: i + 1,
       name,
-      qSec: "",
-      qItem: "",
-      qCol: "",
+      qSec: qref.sec,
+      qItem: qref.item,
+      qCol: qref.col,
       length: fieldWidth,
       byteStart: bytePos,
       byteEnd: bytePos + fieldWidth - 1,
@@ -224,7 +285,6 @@ export function profileData(
       sampleValues,
     };
 
-    // Numeric stats
     if (type === "numeric") {
       const nums = nonNullValues.map(Number).filter((n) => !isNaN(n));
       if (nums.length > 0) {
