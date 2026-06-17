@@ -60,6 +60,10 @@ function makeCellKsBytes(size: number, keyHex: string, ivSeed: number): Uint8Arr
 }
 
 // ── §10 — Format-preserving encryption ───────────────────────────────────────
+// Shift is always >= 1 so a value can never encrypt to itself.
+// Lead digit (1-9 alphabet, mod 9): shift = 1 + (k % 8)  → range [1,8]
+// Regular digit (0-9 alphabet, mod 10): shift = 1 + (k % 9) → range [1,9]
+// Letter (26-char alphabet, mod 26): shift = 1 + (k % 25) → range [1,25]
 function encryptFPECell(ksBytes: Uint8Array, value: string): string {
   const isAllNumeric = /^\d+$/.test(value) && value.length > 1;
   let ki = 0;
@@ -68,14 +72,15 @@ function encryptFPECell(ksBytes: Uint8Array, value: string): string {
     const k = ksBytes[ki++ % ksBytes.length];
     if (code >= 48 && code <= 57) {
       if (isAllNumeric && idx === 0) {
+        // Map within 1-9 (mod-9 space), guaranteed non-zero shift
         const d = code - 49;
-        return String.fromCharCode(49 + ((d + (k % 9) + 9) % 9));
+        return String.fromCharCode(49 + ((d + 1 + (k % 8) + 81) % 9));
       }
-      return String.fromCharCode(48 + ((code - 48 + k) % 10));
+      return String.fromCharCode(48 + ((code - 48 + 1 + (k % 9)) % 10));
     } else if (code >= 65 && code <= 90) {
-      return String.fromCharCode(65 + ((code - 65 + k) % 26));
+      return String.fromCharCode(65 + ((code - 65 + 1 + (k % 25)) % 26));
     } else if (code >= 97 && code <= 122) {
-      return String.fromCharCode(97 + ((code - 97 + k) % 26));
+      return String.fromCharCode(97 + ((code - 97 + 1 + (k % 25)) % 26));
     }
     return ch;
   }).join("");
@@ -91,13 +96,13 @@ function decryptFPECell(ksBytes: Uint8Array, value: string): string {
     if (code >= 48 && code <= 57) {
       if (isAllNumeric && idx === 0) {
         const d = code - 49;
-        return String.fromCharCode(49 + ((d - (k % 9) + 9) % 9));
+        return String.fromCharCode(49 + ((d - 1 - (k % 8) + 81) % 9));
       }
-      return String.fromCharCode(48 + ((code - 48 - k + 1000) % 10));
+      return String.fromCharCode(48 + ((code - 48 - 1 - (k % 9) + 100) % 10));
     } else if (code >= 65 && code <= 90) {
-      return String.fromCharCode(65 + ((code - 65 - k + 2600) % 26));
+      return String.fromCharCode(65 + ((code - 65 - 1 - (k % 25) + 2600) % 26));
     } else if (code >= 97 && code <= 122) {
-      return String.fromCharCode(97 + ((code - 97 - k + 2600) % 26));
+      return String.fromCharCode(97 + ((code - 97 - 1 - (k % 25) + 2600) % 26));
     }
     return ch;
   }).join("");
