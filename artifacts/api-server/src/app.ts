@@ -38,7 +38,7 @@ const staticDir = path.resolve(__dirname, "../../csv-profiler/dist/public");
 
 app.use(express.static(staticDir));
 
-app.get("*", (_req, res) => {
+app.get("/{*path}", (_req, res) => {
   res.sendFile(path.join(staticDir, "index.html"));
 });
 

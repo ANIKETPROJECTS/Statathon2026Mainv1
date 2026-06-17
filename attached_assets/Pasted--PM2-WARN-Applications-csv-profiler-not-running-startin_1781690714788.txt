@@ -1,0 +1,45 @@
+[PM2][WARN] Applications csv-profiler not running, starting...
+[PM2][WARN] Folder does not exist: /var/www/STATATHONCONVERTERv1/logs
+[PM2] Creating folder: /var/www/STATATHONCONVERTERv1/logs
+[PM2] App [csv-profiler] launched (1 instances)
+┌────┬──────────────────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                         │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼──────────────────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 3  │ DM-pos                       │ default     │ 1.0.0   │ fork    │ 1319442  │ 30D    │ 0    │ online    │ 12.5%    │ 200.4mb  │ root     │ disabled │
+│ 14 │ Tarangdigitalmenu            │ default     │ 1.0.0   │ cluster │ 1392017  │ 21D    │ 1    │ online    │ 0%       │ 121.1mb  │ root     │ disabled │
+│ 21 │ airavata-app                 │ default     │ 1.0.0   │ fork    │ 1594534  │ 4h     │ 3    │ online    │ 0%       │ 190.0mb  │ root     │ disabled │
+│ 1  │ airavatatechnologies-web     │ default     │ 1.0.0   │ fork    │ 1319439  │ 30D    │ 0    │ online    │ 0%       │ 105.4mb  │ root     │ disabled │
+│ 13 │ at-digital-menu              │ default     │ 1.0.0   │ fork    │ 1319515  │ 30D    │ 0    │ online    │ 0%       │ 150.6mb  │ root     │ disabled │
+│ 10 │ at-smart-salon               │ default     │ N/A     │ fork    │ 1567739  │ 3D     │ 6    │ online    │ 0%       │ 152.4mb  │ root     │ disabled │
+│ 11 │ atdigitalmenu                │ default     │ 1.0.0   │ cluster │ 1319498  │ 30D    │ 0    │ online    │ 0%       │ 116.6mb  │ root     │ disabled │
+│ 9  │ barrelborn                   │ default     │ 1.0.0   │ fork    │ 0        │ 0      │ 0    │ stopped   │ 0%       │ 0b       │ root     │ disabled │
+│ 5  │ bg-remover-portal            │ default     │ 1.0.0   │ fork    │ 1319444  │ 30D    │ 0    │ online    │ 0%       │ 124.9mb  │ root     │ disabled │
+│ 22 │ csv-profiler                 │ default     │ 0.0.0   │ cluster │ 1597182  │ 0s     │ 0    │ online    │ 0%       │ 39.6mb   │ root     │ disabled │
+│ 8  │ eva-jewels                   │ default     │ 1.0.0   │ cluster │ 1319462  │ 30D    │ 0    │ online    │ 0%       │ 120.8mb  │ root     │ disabled │
+│ 17 │ krushisuvidha-api            │ default     │ N/A     │ fork    │ 1319564  │ 30D    │ 0    │ online    │ 0%       │ 175.0mb  │ root     │ disabled │
+│ 15 │ mings-chinese-cuisine        │ default     │ 1.0.0   │ cluster │ 1319536  │ 30D    │ 0    │ online    │ 0%       │ 93.8mb   │ root     │ disabled │
+│ 4  │ portfolio-app                │ default     │ N/A     │ fork    │ 1319443  │ 30D    │ 0    │ online    │ 0%       │ 81.8mb   │ root     │ disabled │
+│ 19 │ prism-server                 │ default     │ 1.0.0   │ fork    │ 1396017  │ 21D    │ 2    │ online    │ 0%       │ 93.5mb   │ root     │ disabled │
+│ 6  │ rest-express                 │ default     │ 1.0.0   │ fork    │ 1319455  │ 30D    │ 0    │ online    │ 0%       │ 88.3mb   │ root     │ disabled │
+│ 0  │ restaurant-management-app    │ default     │ N/A     │ fork    │ 1319440  │ 30D    │ 0    │ online    │ 0%       │ 81.2mb   │ root     │ disabled │
+│ 2  │ restaurant-pos               │ default     │ 1.0.0   │ cluster │ 1319441  │ 30D    │ 0    │ online    │ 0%       │ 130.6mb  │ root     │ disabled │
+│ 20 │ whamo-app                    │ default     │ 1.0.0   │ fork    │ 1512019  │ 9D     │ 0    │ online    │ 0%       │ 345.8mb  │ root     │ disabled │
+└────┴──────────────────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+root@srv1232657:/var/www/STATATHONCONVERTERv1# pm2 log 22
+[TAILING] Tailing last 15 lines for [22] process (change the value with --lines option)
+/var/www/STATATHONCONVERTERv1/logs/pm2-out-22.log last 15 lines:
+/var/www/STATATHONCONVERTERv1/logs/pm2-error-22.log last 15 lines:
+22|csv-pro | You have triggered an unhandledRejection, you may have forgotten to catch a Promise rejection:
+22|csv-pro | TypeError: Missing parameter name at index 1: *; visit https://git.new/pathToRegexpError for info
+22|csv-pro |     at consumeUntil (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/path-to-regexp@8.4.2/node_modules/path-to-regexp/src/index.ts:218:17)
+22|csv-pro |     at parse (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/path-to-regexp@8.4.2/node_modules/path-to-regexp/src/index.ts:262:24)
+22|csv-pro |     at process (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/path-to-regexp@8.4.2/node_modules/path-to-regexp/src/index.ts:466:52)
+22|csv-pro |     at pathToRegexp (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/path-to-regexp@8.4.2/node_modules/path-to-regexp/src/index.ts:478:3)
+22|csv-pro |     at Object.match (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/path-to-regexp@8.4.2/node_modules/path-to-regexp/src/index.ts:416:28)
+22|csv-pro |     at matcher (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/router@2.2.0/node_modules/router/lib/layer.js:86:23)
+22|csv-pro |     at new Layer (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/router@2.2.0/node_modules/router/lib/layer.js:93:62)
+22|csv-pro |     at Function.route (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/router@2.2.0/node_modules/router/index.js:428:17)
+22|csv-pro |     at Function.route (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/express@5.2.1/node_modules/express/lib/application.js:257:22)
+22|csv-pro |     at Function.app2.<computed> (/var/www/STATATHONCONVERTERv1/node_modules/.pnpm/express@5.2.1/node_modules/express/lib/application.js:478:22)
+
+
