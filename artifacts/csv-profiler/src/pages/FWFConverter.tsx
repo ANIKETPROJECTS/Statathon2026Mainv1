@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import {
   Upload, FileText, FileSpreadsheet, CheckCircle2, AlertTriangle,
   X, ArrowRight, Download, Eye, Layers, RotateCcw,
-  ShieldCheck, Key, Lock, Shuffle, LockOpen,
+  Key, Lock, Shuffle, LockOpen, Search,
 } from "lucide-react";
 import {
   parseLayoutFile, readExcelFileInfo, getSheetRowCount, convertFWFToCSV,
@@ -456,25 +456,30 @@ export default function FWFConverter() {
 
       {/* ── Step 4: Anonymize ─────────────────────────────────────────────── */}
       {isConverted && layoutResult && (
-        <div className="border border-gray-200 rounded-2xl p-6 space-y-6 min-w-0 overflow-hidden">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <ShieldCheck className="w-6 h-6 text-blue-600 flex-shrink-0" />
+        <div className="border border-gray-200 rounded-2xl overflow-hidden min-w-0">
+          {/* Step 4 header bar */}
+          <div className="bg-emerald-50 border-b border-emerald-100 px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-white border border-emerald-200 flex items-center justify-center flex-shrink-0">
+                <img src={`${import.meta.env.BASE_URL}shield-check.png`} alt="Security" className="w-7 h-7 object-contain" style={{ filter: "invert(48%) sepia(79%) saturate(476%) hue-rotate(86deg) brightness(95%) contrast(93%)" }} />
+              </div>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-black">Step 4 — AES-256-GCM Encrypt / Decrypt</h2>
-                <p className="text-sm text-gray-500 mt-0.5">Format-preserving: digits→digits, letters→letters</p>
+                <p className="text-sm text-gray-500 mt-0.5">Format-preserving encryption · digits→digits · letters→letters</p>
               </div>
             </div>
-            <div className="flex items-center rounded-xl border border-gray-200 overflow-hidden text-sm font-semibold flex-shrink-0">
+            <div className="flex items-center rounded-xl border border-emerald-200 overflow-hidden text-sm font-semibold flex-shrink-0 bg-white">
               {(["encrypt", "decrypt"] as const).map((m) => (
                 <button key={m} onClick={() => { setAnonMode(m); setEncError(""); setDecryptError(""); }}
-                  className={`flex items-center gap-2 px-4 py-2.5 transition-colors ${m !== "encrypt" ? "border-l border-gray-200" : ""} ${anonMode === m ? "bg-black text-white" : "hover:bg-gray-50 text-gray-500"}`}>
+                  className={`flex items-center gap-2 px-5 py-2.5 transition-colors ${m !== "encrypt" ? "border-l border-gray-200" : ""} ${anonMode === m ? "bg-emerald-500 text-white border-emerald-500" : "hover:bg-gray-50 text-gray-500"}`}>
                   {m === "encrypt" ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}
                   {m === "encrypt" ? "Encrypt" : "Decrypt"}
                 </button>
               ))}
             </div>
           </div>
+
+          <div className="p-6 space-y-6">
 
           <KeySettings
             keyMode={anonKeyMode} setKeyMode={setAnonKeyMode}
@@ -597,6 +602,7 @@ export default function FWFConverter() {
               )}
             </div>
           )}
+          </div>{/* end p-6 content */}
         </div>
       )}
     </div>
@@ -678,6 +684,11 @@ function KeySettings({ keyMode, setKeyMode, seed, setSeed, passphrase, setPassph
 // ── Column selector ───────────────────────────────────────────────────────────
 
 function ColSelector({ allCols, selected, onChange, label }: { allCols: string[]; selected: Set<string>; onChange: (s: Set<string>) => void; label: string }) {
+  const [query, setQuery] = useState("");
+  const filtered = query.trim()
+    ? allCols.filter((c) => c.toLowerCase().includes(query.trim().toLowerCase()))
+    : allCols;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -687,14 +698,33 @@ function ColSelector({ allCols, selected, onChange, label }: { allCols: string[]
           <button onClick={() => onChange(new Set())} className="text-sm px-3 py-1 rounded-lg border border-gray-200 hover:border-gray-400 text-gray-500 hover:text-black transition-colors">Clear</button>
         </div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1 pt-1">
-        {allCols.map((col) => (
-          <label key={col} className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm transition-colors ${selected.has(col) ? "border-blue-500 bg-blue-50 text-black" : "border-gray-200 hover:border-blue-300 text-gray-500 hover:text-black"}`}>
-            <input type="checkbox" checked={selected.has(col)} onChange={(e) => { const n = new Set(selected); if (e.target.checked) n.add(col); else n.delete(col); onChange(n); }} className="accent-blue-600 w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate font-mono text-xs">{col}</span>
-          </label>
-        ))}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search columns…"
+          className="w-full pl-9 pr-4 py-2.5 text-sm rounded-xl border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-black placeholder:text-gray-400"
+        />
+        {query && (
+          <button onClick={() => setQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
+      {filtered.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-4">No columns match "{query}"</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-2 max-h-52 overflow-y-auto pr-1 pt-1">
+          {filtered.map((col) => (
+            <label key={col} className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-sm transition-colors ${selected.has(col) ? "border-blue-500 bg-blue-50 text-black" : "border-gray-200 hover:border-blue-300 text-gray-500 hover:text-black"}`}>
+              <input type="checkbox" checked={selected.has(col)} onChange={(e) => { const n = new Set(selected); if (e.target.checked) n.add(col); else n.delete(col); onChange(n); }} className="accent-blue-600 w-3.5 h-3.5 flex-shrink-0" />
+              <span className="truncate font-mono text-xs">{col}</span>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
