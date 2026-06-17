@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import Papa from "papaparse";
-import { Upload, FileText, X, BarChart2, Table2, Info, FileJson, CheckCircle2 } from "lucide-react";
+import { Upload, FileText, X, BarChart2, Table2, Info, FileJson, CheckCircle2, Download } from "lucide-react";
+import { downloadCSV, downloadExcel } from "@/lib/export";
 import {
   profileData,
   parseMappingFile,
@@ -338,6 +339,26 @@ export default function Home() {
                     {unfilledQCount} questionnaire {unfilledQCount === 1 ? "column needs" : "columns need"} Sec/Item
                   </span>
                 )}
+
+                {/* Download buttons */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => downloadCSV(profile)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground font-medium"
+                    title="Download layout table as CSV"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => downloadExcel(profile)}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition-colors text-emerald-700 font-medium"
+                    title="Download layout table as Excel (.xlsx)"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Excel
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
                   <button
