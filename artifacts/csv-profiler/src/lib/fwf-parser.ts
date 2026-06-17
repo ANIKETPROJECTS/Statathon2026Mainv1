@@ -176,15 +176,23 @@ export function parseLayoutFromExcel(
     defval: "",
   });
 
+  // Extract merge info for merged-header detection
+  const merges: MergeRange[] = (ws["!merges"] as MergeRange[]) ?? [];
+
   // Apply row range if specified (1-indexed, inclusive)
   if (options?.startRow !== undefined || options?.endRow !== undefined) {
     const s = Math.max(0, (options.startRow ?? 1) - 1);
     const e = options.endRow !== undefined ? options.endRow : aoa.length;
+    // Adjust merge row indices when slicing rows
+    const adjustedMerges = merges
+      .filter((m) => m.s.r >= s && m.s.r < e)
+      .map((m) => ({ s: { r: m.s.r - s, c: m.s.c }, e: { r: m.e.r - s, c: m.e.c } }));
     aoa = aoa.slice(s, e);
     warnings.push(`Scanning rows ${options.startRow ?? 1}–${Math.min(e, aoa.length + s)} of sheet "${targetSheet}".`);
+    return parseFromAOA(aoa, targetSheet, warnings, adjustedMerges);
   }
 
-  return parseFromAOA(aoa, targetSheet, warnings);
+  return parseFromAOA(aoa, targetSheet, warnings, merges);
 }
 
 // ── Parse layout from CSV text ────────────────────────────────────────────────
@@ -201,17 +209,58 @@ export function parseLayoutFromCSV(text: string): ParseLayoutResult {
 
 // ── Shared AOA→FieldDef logic ─────────────────────────────────────────────────
 
+type MergeRange = { s: { r: number; c: number }; e: { r: number; c: number } };
+
+/**
+ * Expand merged "Byte Position" headers in a header row.
+ * When a cell normalises to "byteposition" (or similar) and the worksheet has a
+ * merge that spans exactly 2 columns at that cell, we inject "Byte Position
+ * (Start)" at the left column and "Byte Position (End)" at the right column so
+ * that detectColumns() can find them.
+ */
+function expandMergedBytePositionHeaders(
+  headerRow: string[],
+  rowIdx: number,
+  merges: MergeRange[]
+): string[] {
+  const expanded = [...headerRow];
+  for (let c = 0; c < headerRow.length; c++) {
+    const norm = nh(headerRow[c]);
+    // Detect "Byte Position" (merged) — normalises to "byteposition"
+    if (norm === "byteposition" || norm === "bytepos" || norm === "bytepositions") {
+      // Find a merge covering (rowIdx, c)
+      const merge = merges.find(
+        (m) => m.s.r === rowIdx && m.s.c === c && m.e.c > c
+      );
+      if (merge) {
+        expanded[c] = "Byte Position (Start)";
+        expanded[merge.e.c] = "Byte Position (End)";
+      } else {
+        // No merge info — assume next blank column is "end"
+        if (c + 1 < headerRow.length && headerRow[c + 1].trim() === "") {
+          expanded[c] = "Byte Position (Start)";
+          expanded[c + 1] = "Byte Position (End)";
+        }
+      }
+    }
+  }
+  return expanded;
+}
+
 function parseFromAOA(
   aoa: unknown[][],
   sheetName: string,
-  warnings: string[]
+  warnings: string[],
+  merges: MergeRange[] = []
 ): ParseLayoutResult {
   // Find header row: first row where start/end columns can be detected
   let headerRowIdx = -1;
   let colMap: Record<string, number> = {};
 
-  for (let r = 0; r < Math.min(aoa.length, 10); r++) {
-    const row = aoa[r].map(String);
+  for (let r = 0; r < Math.min(aoa.length, 15); r++) {
+    const raw = aoa[r].map(String);
+    // Expand merged "Byte Position" headers before detection
+    const row = expandMergedBytePositionHeaders(raw, r, merges);
     const cm = detectColumns(row);
     if (cm.start !== undefined && cm.end !== undefined) {
       headerRowIdx = r;
