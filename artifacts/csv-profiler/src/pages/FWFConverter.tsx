@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import {
-  Upload, FileText, FileSpreadsheet, CheckCircle2, AlertTriangle,
+  Upload, CheckCircle2, AlertTriangle,
   X, ArrowRight, Download, Eye, Layers, RotateCcw,
   Key, Lock, Shuffle, LockOpen, Search, Columns2, Loader2,
 } from "lucide-react";
+import folderIcon from "@assets/open-folder_1781738999125.png";
 import {
   parseLayoutFile, readExcelFileInfo, getSheetRowCount, convertFWFToCSV,
   type FieldDef, type ParseLayoutResult, type ExcelFileInfo,
@@ -177,7 +178,7 @@ export default function FWFConverter() {
     setDataLineCount(lines.length);
 
     if (layoutResult) {
-      setPreview(lines.slice(0, 5).map((line) =>
+      setPreview(lines.slice(0, 10).map((line) =>
         layoutResult.fields.map((f) => line.padEnd(f.end).substring(f.start - 1, f.end).trim())
       ));
     }
@@ -381,7 +382,7 @@ export default function FWFConverter() {
 
           {layoutSubStep === "upload" && (
             <>
-              <DropZone accept=".xlsx,.xls,.csv" icon={<FileSpreadsheet className="w-9 h-9 text-blue-600" />}
+              <DropZone accept=".xlsx,.xls,.csv" icon={<img src={folderIcon} className="w-24 h-24 object-contain" alt="" />}
                 label="Drop layout file here" sublabel="Excel or CSV"
                 inputRef={layoutInputRef} onFile={handleLayoutFile} />
               {layoutError && <ErrorBox message={layoutError} />}
@@ -472,7 +473,7 @@ export default function FWFConverter() {
               Complete Step 1 first
             </div>
           ) : !dataFileName ? (
-            <DropZone accept=".txt,.dat,.fwf,.data" icon={<FileText className="w-9 h-9 text-blue-600" />}
+            <DropZone accept=".txt,.dat,.fwf,.data" icon={<img src={folderIcon} className="w-24 h-24 object-contain" alt="" />}
               label="Drop fixed-width data file here" sublabel=".TXT, .DAT or any fixed-width file"
               inputRef={dataInputRef} onFile={handleDataFile} />
           ) : (
@@ -1012,7 +1013,7 @@ function DropZone({ accept, icon, label, sublabel, inputRef, onFile }: { accept:
       onClick={() => inputRef.current?.click()}>
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
       <div className="flex flex-col items-center gap-4">
-        <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">{icon}</div>
+        <div className="flex items-center justify-center">{icon}</div>
         <div>
           <p className="text-base font-semibold text-black">{label}</p>
           <p className="text-sm text-gray-500 mt-1">{sublabel}</p>

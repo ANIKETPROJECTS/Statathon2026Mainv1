@@ -23,7 +23,7 @@ function AppLayout() {
           <img src={`${import.meta.env.BASE_URL}airavata-logo.png`} alt="Airavata logo" className="w-10 h-10 object-contain" />
           <div>
             <span className="text-xl font-semibold text-black tracking-tight">AIRAVATA DEA</span>
-            <p className="text-sm text-gray-500 leading-none mt-0.5">Convert, anonymize &amp; decrypt fixed-width data files</p>
+            <p className="text-sm text-gray-500 leading-none mt-0.5">Convert, Anonymize &amp; Decrypt</p>
           </div>
         </div>
       </header>
