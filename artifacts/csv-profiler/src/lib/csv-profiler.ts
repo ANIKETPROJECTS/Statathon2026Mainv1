@@ -65,47 +65,83 @@ function detectType(sample: string[]): ColumnType {
   return "text";
 }
 
+const MULTIPLIER_KEYWORDS = ["multiplier", "weight", "wgt", "wt", "factor", "grossing"];
+const COMMON_ID_KEYWORDS = ["id", "serial", "no", "number", "household", "survey", "hh", "fsu", "ssu", "psu", "stratum", "district", "region", "state", "sector", "level", "round", "schedule", "block", "village", "sample"];
+
+function isMultiplierColumn(name: string, isLast: boolean): boolean {
+  const lower = name.toLowerCase();
+  if (MULTIPLIER_KEYWORDS.some((kw) => lower.includes(kw))) return true;
+  // Last column heuristic: if name looks like a weight/multiplier field
+  if (isLast && lower.includes("mult")) return true;
+  return false;
+}
+
+function isCommonIdColumn(name: string): boolean {
+  const lower = name.toLowerCase().replace(/[_\-\s]/g, "");
+  return COMMON_ID_KEYWORDS.some((kw) => lower.includes(kw));
+}
+
 function inferRemarks(
-  values: string[],
+  name: string,
   nonNullValues: string[],
   topValues: ValueFrequency[],
   type: ColumnType,
   nullCount: number,
-  uniqueCount: number
+  uniqueCount: number,
+  totalCount: number,
+  isLast: boolean
 ): string {
-  // If all non-null values are identical → 'VALUE' Generated
+  // Single fixed value across all rows → 'VALUE' Generated
   if (uniqueCount === 1 && nonNullValues.length > 0) {
     const val = topValues[0]?.value ?? "";
     return `'${val}' Generated`;
   }
 
-  // If column has blanks/nulls and few unique values → blank-generated note
-  if (nullCount > 0 && uniqueCount <= 10) {
-    return "If not selected blank generated";
+  // Multiplier / weight column (by name or last-column convention)
+  if (isMultiplierColumn(name, isLast) && type === "numeric") {
+    return "Final weight/multiplier";
   }
 
-  // If it looks like a multiplier / weight column (large numbers, consistent length)
-  if (type === "numeric" && nonNullValues.length > 0) {
-    const nums = nonNullValues.map(Number).filter((n) => !isNaN(n));
-    const allLarge = nums.every((n) => n > 1000);
-    const maxLen = nonNullValues.reduce((a, b) => (b.length > a ? b.length : a), 0);
-    if (allLarge && maxLen >= 5) {
-      return "Final weight/multiplier";
+  // Common-ID field (household identifier component)
+  if (isCommonIdColumn(name)) {
+    const lower = name.toLowerCase();
+    if (
+      lower.includes("serial") ||
+      lower.includes("fsu") ||
+      lower.includes("ssu") ||
+      lower.includes("hh") ||
+      lower.includes("household")
+    ) {
+      return "**Common-ID**";
     }
+  }
+
+  // High null rate → blank generated note
+  const nullRate = totalCount > 0 ? nullCount / totalCount : 0;
+  if (nullRate > 0.8) {
+    return "Blank when not applicable";
+  }
+
+  // Moderate nulls with few unique values
+  if (nullCount > 0 && uniqueCount <= 5) {
+    return "If not selected blank generated";
   }
 
   return "";
 }
 
-function computeTopValues(
-  nonNullValues: string[],
-  limit = 10
-): ValueFrequency[] {
+interface FreqResult {
+  topValues: ValueFrequency[];
+  uniqueCount: number;
+}
+
+function computeTopValues(nonNullValues: string[], limit = 10): FreqResult {
   const freqMap = new Map<string, number>();
   for (const v of nonNullValues) {
     freqMap.set(v, (freqMap.get(v) ?? 0) + 1);
   }
-  return Array.from(freqMap.entries())
+  const uniqueCount = freqMap.size;
+  const topValues = Array.from(freqMap.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit)
     .map(([value, count]) => ({
@@ -113,6 +149,7 @@ function computeTopValues(
       count,
       percent: nonNullValues.length > 0 ? (count / nonNullValues.length) * 100 : 0,
     }));
+  return { topValues, uniqueCount };
 }
 
 function medianOf(sorted: number[]): number {
@@ -133,31 +170,39 @@ export function profileData(
 
   for (let i = 0; i < headers.length; i++) {
     const name = headers[i];
+    const isLast = i === headers.length - 1;
     const rawValues = data.map((row) => row[name] ?? "");
     const nonNullValues = rawValues.filter((v) => v !== "");
     const totalCount = rawValues.length;
     const nullCount = totalCount - nonNullValues.length;
     const fillRate = totalCount > 0 ? (nonNullValues.length / totalCount) * 100 : 0;
 
-    // Field width = max string length of actual data values (NOT the column name)
-    // This mirrors how fixed-width layout files define field width from the data, not the label.
-    let fieldWidth = 1; // minimum 1 byte
-    for (const v of rawValues) {
-      if (v.length > fieldWidth) fieldWidth = v.length;
-    }
-
     const type = detectType(nonNullValues.slice(0, 200));
-    const topValues = computeTopValues(nonNullValues);
-    const uniqueCount = topValues.length < 10
-      ? topValues.length
-      : (() => {
-          const s = new Set(nonNullValues);
-          return s.size;
-        })();
+    const { topValues, uniqueCount } = computeTopValues(nonNullValues);
+
+    // Field width = max string length of actual data values (NOT the column name).
+    // Exception: Multiplier/weight columns always get 15 bytes (NSSO convention).
+    let fieldWidth = 1; // minimum 1 byte
+    if (isMultiplierColumn(name, isLast) && type === "numeric") {
+      fieldWidth = 15;
+    } else {
+      for (const v of rawValues) {
+        if (v.length > fieldWidth) fieldWidth = v.length;
+      }
+    }
 
     const sampleValues = Array.from(new Set(nonNullValues.slice(0, 5)));
 
-    const remarks = inferRemarks(rawValues, nonNullValues, topValues, type, nullCount, uniqueCount);
+    const remarks = inferRemarks(
+      name,
+      nonNullValues,
+      topValues,
+      type,
+      nullCount,
+      uniqueCount,
+      totalCount,
+      isLast
+    );
 
     const col: ColumnLayout = {
       srlNo: i + 1,
