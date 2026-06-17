@@ -1,7 +1,14 @@
 import { useState, useCallback, useRef } from "react";
 import Papa from "papaparse";
-import { Upload, FileText, X, BarChart2, Table2, Info } from "lucide-react";
-import { profileData, type DataProfile, type ColumnLayout, formatFileSize } from "@/lib/csv-profiler";
+import { Upload, FileText, X, BarChart2, Table2, Info, FileJson, CheckCircle2 } from "lucide-react";
+import {
+  profileData,
+  parseMappingFile,
+  type DataProfile,
+  type ColumnLayout,
+  type UserQRefMap,
+  formatFileSize,
+} from "@/lib/csv-profiler";
 import { ColumnDetailPanel } from "@/components/ColumnDetailPanel";
 import { DataPreviewTable } from "@/components/DataPreviewTable";
 import { SummaryCards } from "@/components/SummaryCards";
@@ -16,38 +23,87 @@ export default function Home() {
   const [selectedColumn, setSelectedColumn] = useState<ColumnLayout | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("profile");
   const [error, setError] = useState<string | null>(null);
+  const [userQRefMap, setUserQRefMap] = useState<UserQRefMap>({});
+  const [mappingFileName, setMappingFileName] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mappingInputRef = useRef<HTMLInputElement>(null);
 
-  const processFile = useCallback((file: File) => {
-    const name = file.name.toLowerCase();
-    if (!name.endsWith(".csv") && !name.endsWith(".tsv") && file.type !== "text/csv") {
-      setError("Please upload a CSV or TSV file.");
-      return;
-    }
-    setError(null);
-    setIsLoading(true);
-    setProfile(null);
-    setSelectedColumn(null);
+  // Keep track of the last raw CSV so we can re-profile when mapping changes
+  const lastParseRef = useRef<{
+    data: Record<string, string>[];
+    headers: string[];
+    fileName: string;
+    fileSize?: number;
+  } | null>(null);
 
-    const delimiter = name.endsWith(".tsv") ? "\t" : undefined;
+  const applyProfile = useCallback(
+    (
+      data: Record<string, string>[],
+      headers: string[],
+      fileName: string,
+      fileSize: number | undefined,
+      qrefMap: UserQRefMap
+    ) => {
+      const p = profileData(data, headers, fileName, fileSize, qrefMap);
+      setProfile(p);
+      setSelectedColumn(null);
+    },
+    []
+  );
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      delimiter,
-      complete: (results) => {
-        const headers = results.meta.fields ?? [];
-        const data = results.data as Record<string, string>[];
-        const p = profileData(data, headers, file.name, file.size);
-        setProfile(p);
-        setIsLoading(false);
-      },
-      error: (err) => {
-        setError(`Failed to parse file: ${err.message}`);
-        setIsLoading(false);
-      },
-    });
-  }, []);
+  const processFile = useCallback(
+    (file: File) => {
+      const name = file.name.toLowerCase();
+      if (!name.endsWith(".csv") && !name.endsWith(".tsv") && file.type !== "text/csv") {
+        setError("Please upload a CSV or TSV file.");
+        return;
+      }
+      setError(null);
+      setIsLoading(true);
+      setProfile(null);
+      setSelectedColumn(null);
+
+      const delimiter = name.endsWith(".tsv") ? "\t" : undefined;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        delimiter,
+        complete: (results) => {
+          const headers = results.meta.fields ?? [];
+          const data = results.data as Record<string, string>[];
+          lastParseRef.current = { data, headers, fileName: file.name, fileSize: file.size };
+          applyProfile(data, headers, file.name, file.size, userQRefMap);
+          setIsLoading(false);
+        },
+        error: (err) => {
+          setError(`Failed to parse file: ${err.message}`);
+          setIsLoading(false);
+        },
+      });
+    },
+    [applyProfile, userQRefMap]
+  );
+
+  const processMappingFile = useCallback(
+    (file: File) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const qrefMap = parseMappingFile(text);
+        setUserQRefMap(qrefMap);
+        setMappingFileName(file.name);
+        // Re-profile if CSV was already loaded
+        if (lastParseRef.current) {
+          const { data, headers, fileName, fileSize } = lastParseRef.current;
+          applyProfile(data, headers, fileName, fileSize, qrefMap);
+        }
+      };
+      reader.readAsText(file);
+    },
+    [applyProfile]
+  );
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -65,11 +121,20 @@ export default function Home() {
     e.target.value = "";
   };
 
+  const handleMappingFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processMappingFile(file);
+    e.target.value = "";
+  };
+
   const handleReset = () => {
     setProfile(null);
     setSelectedColumn(null);
     setError(null);
     setViewMode("profile");
+    setUserQRefMap({});
+    setMappingFileName(null);
+    lastParseRef.current = null;
   };
 
   const handleUpdateQRef = (
@@ -89,6 +154,11 @@ export default function Home() {
       setSelectedColumn({ ...selectedColumn, qSec: sec, qItem: item, qCol: col, remarks });
     }
   };
+
+  // Count questionnaire columns that still need Sec/Item filled
+  const unfilledQCount = profile
+    ? profile.columns.filter((c) => c.isQuestionnaire && !c.qSec).length
+    : 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,8 +221,44 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Optional mapping file upload */}
+            <div className="mt-4 w-full max-w-2xl">
+              <div className="border border-dashed border-border rounded-xl px-5 py-4 flex items-center gap-4 bg-card">
+                <FileJson className="w-5 h-5 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground">Optional: Questionnaire mapping file</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Upload a JSON or CSV file to pre-fill Sec / Item / Col for any column.{" "}
+                    <span className="font-mono text-[10px] bg-muted px-1 py-0.5 rounded">
+                      {"{ \"Column_Name\": { \"sec\": \"1\", \"item\": \"1.7\", \"col\": \"\" } }"}
+                    </span>
+                  </p>
+                </div>
+                <input
+                  ref={mappingInputRef}
+                  type="file"
+                  accept=".json,.csv"
+                  className="hidden"
+                  onChange={handleMappingFileChange}
+                />
+                {mappingFileName ? (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium flex-shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {mappingFileName}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => mappingInputRef.current?.click()}
+                    className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground"
+                  >
+                    Browse
+                  </button>
+                )}
+              </div>
+            </div>
+
             {error && (
-              <div className="mt-4 text-sm text-destructive bg-destructive/10 px-4 py-3 rounded-lg">
+              <div className="mt-4 text-sm text-destructive bg-destructive/10 px-4 py-3 rounded-lg w-full max-w-2xl">
                 {error}
               </div>
             )}
@@ -187,7 +293,7 @@ export default function Home() {
         {/* Results */}
         {profile && (
           <div className="space-y-6">
-            {/* File info + view toggle */}
+            {/* File info + mapping upload + view toggle */}
             <div className="flex items-center justify-between flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -201,29 +307,62 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-                <button
-                  onClick={() => setViewMode("profile")}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    viewMode === "profile"
-                      ? "bg-card text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Info className="w-3.5 h-3.5" />
-                  Layout Table
-                </button>
-                <button
-                  onClick={() => setViewMode("preview")}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
-                    viewMode === "preview"
-                      ? "bg-card text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Table2 className="w-3.5 h-3.5" />
-                  Data Preview
-                </button>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Mapping file upload inline */}
+                <input
+                  ref={mappingInputRef}
+                  type="file"
+                  accept=".json,.csv"
+                  className="hidden"
+                  onChange={handleMappingFileChange}
+                />
+                {mappingFileName ? (
+                  <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 rounded-lg">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {mappingFileName}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => mappingInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-accent transition-colors text-muted-foreground"
+                  >
+                    <FileJson className="w-3.5 h-3.5" />
+                    Upload mapping file
+                  </button>
+                )}
+
+                {/* Unfilled questionnaire warning */}
+                {unfilledQCount > 0 && (
+                  <span className="text-xs px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 font-medium">
+                    {unfilledQCount} questionnaire {unfilledQCount === 1 ? "column needs" : "columns need"} Sec/Item
+                  </span>
+                )}
+
+                <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode("profile")}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                      viewMode === "profile"
+                        ? "bg-card text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Info className="w-3.5 h-3.5" />
+                    Layout Table
+                  </button>
+                  <button
+                    onClick={() => setViewMode("preview")}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                      viewMode === "preview"
+                        ? "bg-card text-foreground"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Table2 className="w-3.5 h-3.5" />
+                    Data Preview
+                  </button>
+                </div>
               </div>
             </div>
 

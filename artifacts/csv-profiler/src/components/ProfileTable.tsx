@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, ChevronUp, ChevronDown, Edit3, Check, X } from "lucide-react";
+import { Search, Edit3, Check, X } from "lucide-react";
 import type { DataProfile, ColumnLayout } from "@/lib/csv-profiler";
 
 interface Props {
@@ -14,11 +14,13 @@ function EditableCell({
   onChange,
   placeholder = "",
   className = "",
+  highlight = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
+  highlight?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -35,7 +37,10 @@ function EditableCell({
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
           className="w-full min-w-0 border border-primary/50 rounded px-1.5 py-0.5 text-xs bg-background focus:outline-none"
           style={{ maxWidth: 120 }}
         />
@@ -51,11 +56,14 @@ function EditableCell({
 
   return (
     <div
-      className={`group flex items-center gap-1 cursor-pointer ${className}`}
+      className={`group flex items-center gap-1 cursor-pointer rounded px-1 -mx-1 transition-colors ${
+        highlight ? "bg-amber-50 ring-1 ring-amber-200" : ""
+      } ${className}`}
       onClick={(e) => { e.stopPropagation(); setEditing(true); setDraft(value); }}
+      title={highlight ? "Questionnaire field — click to fill in Sec/Item" : undefined}
     >
-      <span className={value ? "text-foreground" : "text-muted-foreground/40 italic"}>
-        {value || placeholder}
+      <span className={value ? "text-foreground font-medium" : highlight ? "text-amber-400 italic text-[10px]" : "text-muted-foreground/40 italic"}>
+        {value || (highlight ? "fill in" : placeholder)}
       </span>
       <Edit3 className="w-2.5 h-2.5 opacity-0 group-hover:opacity-40 flex-shrink-0" />
     </div>
@@ -84,19 +92,30 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
           />
         </div>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} of {profile.totalColumns} columns &bull; Record length: <strong>{profile.totalRecordLength}</strong> bytes
+          {filtered.length} of {profile.totalColumns} columns &bull; Record length:{" "}
+          <strong>{profile.totalRecordLength}</strong> bytes
         </span>
         <span className="text-xs text-muted-foreground ml-auto italic">
           Click a row for details &bull; Click Sec/Item/Col/Remarks to edit
         </span>
       </div>
 
-      {/* Table — matching the Layout format exactly */}
+      {/* Legend */}
+      <div className="px-4 py-2 border-b border-border/50 flex items-center gap-4 text-[10px] text-muted-foreground bg-muted/20">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-sm bg-amber-50 ring-1 ring-amber-200" />
+          Questionnaire field — Sec/Item needs filling
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 rounded-sm bg-muted border border-border" />
+          Frame / system variable — Sec/Item intentionally blank
+        </span>
+      </div>
+
+      {/* Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
-          {/* Multi-row header like the Excel layout */}
           <thead>
-            {/* Row 1: group headers */}
             <tr className="bg-muted/60 border-b border-border">
               <th className="px-3 py-2 text-xs font-semibold text-foreground text-center border-r border-border" rowSpan={2}>
                 Srl. no.
@@ -120,28 +139,20 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                 Type
               </th>
             </tr>
-            {/* Row 2: sub-headers */}
             <tr className="bg-muted/40 border-b-2 border-border">
-              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">
-                Sec
-              </th>
-              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-16">
-                Item
-              </th>
-              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">
-                Col.
-              </th>
-              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">
-                Start
-              </th>
-              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">
-                End
-              </th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">Sec</th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-16">Item</th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-12">Col.</th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">Start</th>
+              <th className="px-3 py-1.5 text-xs font-medium text-muted-foreground text-center border-r border-border w-14">End</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((col) => {
               const isSelected = selectedColumn?.srlNo === col.srlNo;
+              // Highlight questionnaire vars whose Sec is still unfilled
+              const needsFill = col.isQuestionnaire && !col.qSec;
+
               return (
                 <tr
                   key={col.srlNo}
@@ -149,6 +160,8 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                   className={`border-b border-border/60 cursor-pointer transition-colors ${
                     isSelected
                       ? "bg-primary/8 border-l-2 border-l-primary"
+                      : needsFill
+                      ? "hover:bg-amber-50/60 bg-amber-50/30"
                       : "hover:bg-accent/30"
                   }`}
                 >
@@ -160,6 +173,11 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                   {/* Item / Column Name */}
                   <td className="px-3 py-2 font-medium text-foreground border-r border-border/40 whitespace-nowrap">
                     {col.name}
+                    {col.isQuestionnaire && (
+                      <span className="ml-1.5 text-[9px] px-1 py-0.5 rounded bg-blue-50 text-blue-500 border border-blue-100 align-middle">
+                        Q
+                      </span>
+                    )}
                   </td>
 
                   {/* Sec */}
@@ -167,12 +185,17 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                     className="px-3 py-2 text-xs text-center border-r border-border/40"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <EditableCell
-                      value={col.qSec}
-                      onChange={(v) => onUpdateQRef(col.srlNo - 1, v, col.qItem, col.qCol, col.remarks)}
-                      placeholder="—"
-                      className="justify-center"
-                    />
+                    {col.isQuestionnaire ? (
+                      <EditableCell
+                        value={col.qSec}
+                        onChange={(v) => onUpdateQRef(col.srlNo - 1, v, col.qItem, col.qCol, col.remarks)}
+                        placeholder="—"
+                        className="justify-center"
+                        highlight={needsFill}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
                   </td>
 
                   {/* Item ref */}
@@ -180,12 +203,17 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                     className="px-3 py-2 text-xs text-center border-r border-border/40"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <EditableCell
-                      value={col.qItem}
-                      onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, v, col.qCol, col.remarks)}
-                      placeholder="—"
-                      className="justify-center"
-                    />
+                    {col.isQuestionnaire ? (
+                      <EditableCell
+                        value={col.qItem}
+                        onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, v, col.qCol, col.remarks)}
+                        placeholder="—"
+                        className="justify-center"
+                        highlight={needsFill}
+                      />
+                    ) : (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
                   </td>
 
                   {/* Col ref */}
@@ -193,12 +221,16 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
                     className="px-3 py-2 text-xs text-center border-r border-border/40"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <EditableCell
-                      value={col.qCol}
-                      onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, col.qItem, v, col.remarks)}
-                      placeholder="—"
-                      className="justify-center"
-                    />
+                    {col.isQuestionnaire ? (
+                      <EditableCell
+                        value={col.qCol}
+                        onChange={(v) => onUpdateQRef(col.srlNo - 1, col.qSec, col.qItem, v, col.remarks)}
+                        placeholder="—"
+                        className="justify-center"
+                      />
+                    ) : (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
                   </td>
 
                   {/* Length */}
@@ -230,13 +262,19 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
 
                   {/* Type badge */}
                   <td className="px-3 py-2 text-center">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                      col.type === "numeric" ? "bg-blue-100 text-blue-700" :
-                      col.type === "text" ? "bg-violet-100 text-violet-700" :
-                      col.type === "date" ? "bg-amber-100 text-amber-700" :
-                      col.type === "boolean" ? "bg-emerald-100 text-emerald-700" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                        col.type === "numeric"
+                          ? "bg-blue-100 text-blue-700"
+                          : col.type === "text"
+                          ? "bg-violet-100 text-violet-700"
+                          : col.type === "date"
+                          ? "bg-amber-100 text-amber-700"
+                          : col.type === "boolean"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
                       {col.type}
                     </span>
                   </td>
@@ -246,7 +284,9 @@ export function ProfileTable({ profile, selectedColumn, onSelectColumn, onUpdate
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No columns match your search</div>
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            No columns match your search
+          </div>
         )}
       </div>
     </div>
