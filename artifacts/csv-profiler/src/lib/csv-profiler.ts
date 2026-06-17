@@ -134,8 +134,8 @@ export function profileColumn(
   if (type === "text" || type === "mixed") {
     const lengths = nonNullValues.map((v) => v.length);
     if (lengths.length > 0) {
-      profile.minLength = Math.min(...lengths);
-      profile.maxLength = Math.max(...lengths);
+      profile.minLength = lengths.reduce((a, b) => (b < a ? b : a));
+      profile.maxLength = lengths.reduce((a, b) => (b > a ? b : a));
       profile.avgLength = lengths.reduce((a, b) => a + b, 0) / lengths.length;
     }
   }
