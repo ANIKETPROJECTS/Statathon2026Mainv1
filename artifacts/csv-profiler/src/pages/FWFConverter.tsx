@@ -61,10 +61,15 @@ export default function FWFConverter() {
   const [origDownloading, setOrigDownloading] = useState(false);
   const [origProgress, setOrigProgress] = useState(0);
 
-  // Side-by-side compare
+  // Side-by-side compare (encrypt)
   const [showCompare, setShowCompare] = useState(false);
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareData, setCompareData] = useState<{ headers: string[]; original: string[][]; anonymized: string[][] } | null>(null);
+
+  // Side-by-side compare (decrypt)
+  const [showDecryptCompare, setShowDecryptCompare] = useState(false);
+  const [decryptCompareLoading, setDecryptCompareLoading] = useState(false);
+  const [decryptCompareData, setDecryptCompareData] = useState<{ headers: string[]; original: string[][]; anonymized: string[][] } | null>(null);
 
   const [decryptFileName, setDecryptFileName] = useState("");
   const [decryptCsvText, setDecryptCsvText] = useState<string | null>(null);
@@ -243,6 +248,34 @@ export default function FWFConverter() {
       setCompareLoading(false);
     }
   }, [layoutResult, dataText, encResultBlob]);
+
+  const handleOpenDecryptCompare = useCallback(async () => {
+    if (!decryptCsvText || !decryptBlob) return;
+    setDecryptCompareLoading(true);
+    setShowDecryptCompare(true);
+    try {
+      const MAX = 500;
+      const parseCSVLine = (line: string): string[] => {
+        const cells: string[] = []; let cur = ""; let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (ch === '"') { inQ = !inQ; }
+          else if (ch === ',' && !inQ) { cells.push(cur); cur = ""; }
+          else { cur += ch; }
+        }
+        cells.push(cur); return cells;
+      };
+      const encLines = decryptCsvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const headers = parseCSVLine(encLines[0]);
+      const original = encLines.slice(1, MAX + 1).map(parseCSVLine);
+      const decText = await decryptBlob.text();
+      const decLines = decText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      const anonymized = decLines.slice(1, MAX + 1).map(parseCSVLine);
+      setDecryptCompareData({ headers, original, anonymized });
+    } finally {
+      setDecryptCompareLoading(false);
+    }
+  }, [decryptCsvText, decryptBlob]);
 
   const handleCopyKey = (k: string) => {
     navigator.clipboard.writeText(k).then(() => {
@@ -634,6 +667,10 @@ export default function FWFConverter() {
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 transition-colors">
                       <Download className="w-4 h-4" />Download decrypted CSV
                     </button>
+                    <button onClick={handleOpenDecryptCompare}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-emerald-500 text-emerald-700 text-sm font-semibold hover:bg-emerald-50 transition-colors">
+                      <Columns2 className="w-4 h-4" />View side by side
+                    </button>
                     <button onClick={() => { setDecryptBlob(null); setDecryptProgress(0); }}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-500 hover:text-black hover:border-gray-400 transition-colors">
                       ← Change settings
@@ -655,16 +692,28 @@ export default function FWFConverter() {
           onClose={() => { setShowCompare(false); setCompareData(null); }}
         />
       )}
+      {showDecryptCompare && (
+        <SideBySideModal
+          loading={decryptCompareLoading}
+          data={decryptCompareData}
+          totalRows={decryptCompareData?.original.length ?? 0}
+          leftLabel="Encrypted"
+          rightLabel="Decrypted"
+          onClose={() => { setShowDecryptCompare(false); setDecryptCompareData(null); }}
+        />
+      )}
     </div>
   );
 }
 
 // ── Side-by-side compare modal ────────────────────────────────────────────────
 
-function SideBySideModal({ loading, data, totalRows, onClose }: {
+function SideBySideModal({ loading, data, totalRows, leftLabel = "Original", rightLabel = "Anonymized", onClose }: {
   loading: boolean;
   data: { headers: string[]; original: string[][]; anonymized: string[][] } | null;
   totalRows: number;
+  leftLabel?: string;
+  rightLabel?: string;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
@@ -727,10 +776,10 @@ function SideBySideModal({ loading, data, totalRows, onClose }: {
 
       {!loading && data && (
         <div className="flex-1 flex min-h-0 divide-x divide-gray-200">
-          {/* Original pane */}
+          {/* Left pane */}
           <div className="flex-1 flex flex-col min-w-0">
             <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center gap-2 flex-shrink-0">
-              <span className="text-sm font-semibold text-black">Original</span>
+              <span className="text-sm font-semibold text-black">{leftLabel}</span>
               <span className="text-xs text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">{data.original.length.toLocaleString()} rows</span>
             </div>
             <div className="flex-1 overflow-auto">
@@ -764,10 +813,10 @@ function SideBySideModal({ loading, data, totalRows, onClose }: {
             </div>
           </div>
 
-          {/* Anonymized pane */}
+          {/* Right pane */}
           <div className="flex-1 flex flex-col min-w-0">
             <div className="px-4 py-2.5 bg-emerald-50 border-b border-gray-200 flex items-center gap-2 flex-shrink-0">
-              <span className="text-sm font-semibold text-emerald-800">Anonymized</span>
+              <span className="text-sm font-semibold text-emerald-800">{rightLabel}</span>
               <span className="text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">{data.anonymized.length.toLocaleString()} rows</span>
             </div>
             <div className="flex-1 overflow-auto">
