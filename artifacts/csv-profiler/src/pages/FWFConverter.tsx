@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   Upload, CheckCircle2, AlertTriangle,
   X, ArrowRight, Download, Eye, Layers, RotateCcw,
-  Key, Lock, Shuffle, LockOpen, Search, Columns2, Loader2, FileSpreadsheet,
+  Key, Lock, Shuffle, LockOpen, Search, Columns2, Loader2, FileSpreadsheet, ChevronDown,
 } from "lucide-react";
 import folderIcon from "@assets/open-folder_1781738999125.png";
 import {
@@ -13,6 +13,7 @@ import {
   encryptFWFToBlob, decryptCSVToBlob, readCSVHeaders,
   type AnonymizeOptions,
 } from "@/lib/anonymize";
+import { exportAs, EXPORT_FORMATS, type ExportFormat } from "@/lib/format-export";
 
 type Step = "layout" | "data" | "converted" | "anon-done";
 type LayoutSubStep = "upload" | "sheet-select" | "done";
@@ -61,6 +62,10 @@ export default function FWFConverter() {
 
   const [origDownloading, setOrigDownloading] = useState(false);
   const [origProgress, setOrigProgress] = useState(0);
+
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("csv");
+  const [exportDropOpen, setExportDropOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Side-by-side compare (encrypt)
   const [showCompare, setShowCompare] = useState(false);
@@ -605,10 +610,51 @@ export default function FWFConverter() {
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <button onClick={() => triggerDownload(encResultBlob!, `${outputBaseName}_anonymized.csv`)}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 transition-colors">
-                      <Download className="w-4 h-4" />Download anonymized CSV
-                    </button>
+                    {/* Format download dropdown */}
+                    <div className="flex-1 relative">
+                      <div className="flex rounded-xl overflow-hidden border-2 border-emerald-600">
+                        <button
+                          disabled={exporting}
+                          onClick={async () => {
+                            if (!encResultBlob) return;
+                            setExporting(true);
+                            try {
+                              await exportAs(exportFormat, encResultBlob, outputBaseName, fields);
+                            } finally {
+                              setExporting(false);
+                            }
+                          }}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white text-base font-semibold hover:bg-emerald-700 disabled:opacity-60 transition-colors"
+                        >
+                          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                          {exporting ? "Preparing…" : `Download anonymized ${EXPORT_FORMATS.find(f => f.id === exportFormat)?.ext ?? ".csv"}`}
+                        </button>
+                        <button
+                          onClick={() => setExportDropOpen((v) => !v)}
+                          className="px-3 bg-emerald-600 text-white hover:bg-emerald-700 border-l border-emerald-500 transition-colors"
+                          title="Choose format"
+                        >
+                          <ChevronDown className={`w-4 h-4 transition-transform ${exportDropOpen ? "rotate-180" : ""}`} />
+                        </button>
+                      </div>
+                      {exportDropOpen && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
+                          {EXPORT_FORMATS.map((fmt) => (
+                            <button
+                              key={fmt.id}
+                              onClick={() => { setExportFormat(fmt.id); setExportDropOpen(false); }}
+                              className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-0 ${exportFormat === fmt.id ? "bg-emerald-50" : ""}`}
+                            >
+                              <span className={`mt-0.5 text-xs font-bold px-1.5 py-0.5 rounded ${exportFormat === fmt.id ? "bg-emerald-600 text-white" : "bg-gray-100 text-gray-600"}`}>{fmt.ext}</span>
+                              <span>
+                                <span className="text-sm font-semibold text-black block">{fmt.label}</span>
+                                <span className="text-xs text-gray-500">{fmt.description}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button onClick={handleOpenCompare}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border-2 border-emerald-500 text-emerald-700 text-sm font-semibold hover:bg-emerald-50 transition-colors">
                       <Columns2 className="w-4 h-4" />View side by side
