@@ -4,7 +4,7 @@ import type { FieldDef } from "./fwf-parser";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
-export type ExportFormat = "csv" | "txt" | "dta" | "sav" | "xpt" | "json" | "xlsx";
+export type ExportFormat = "csv" | "txt" | "dta" | "sav" | "xpt" | "sas7bdat" | "json" | "xlsx";
 
 export interface FormatMeta {
   id: ExportFormat;
@@ -14,13 +14,14 @@ export interface FormatMeta {
 }
 
 export const EXPORT_FORMATS: FormatMeta[] = [
-  { id: "csv",  label: "CSV",         ext: ".csv",  description: "Comma-separated values" },
-  { id: "txt",  label: "TXT",         ext: ".txt",  description: "Original fixed-width format with anonymized data" },
-  { id: "json", label: "JSON",        ext: ".json", description: "Array of objects keyed by column name" },
-  { id: "xlsx", label: "Excel",       ext: ".xlsx", description: "Microsoft Excel workbook" },
-  { id: "dta",  label: "Stata",       ext: ".dta",  description: "Stata dataset (v115)" },
-  { id: "sav",  label: "SPSS",        ext: ".sav",  description: "SPSS Statistics data file" },
-  { id: "xpt",  label: "SAS XPORT",   ext: ".xpt",  description: "SAS transport format (v5)" },
+  { id: "csv",      label: "CSV",            ext: ".csv",      description: "Comma-separated values" },
+  { id: "txt",      label: "TXT",            ext: ".txt",      description: "Original fixed-width format with anonymized data" },
+  { id: "json",     label: "JSON",           ext: ".json",     description: "Array of objects keyed by column name" },
+  { id: "xlsx",     label: "Excel",          ext: ".xlsx",     description: "Microsoft Excel workbook" },
+  { id: "dta",      label: "Stata",          ext: ".dta",      description: "Stata dataset (v115)" },
+  { id: "sav",      label: "SPSS",           ext: ".sav",      description: "SPSS Statistics data file" },
+  { id: "sas7bdat", label: "SAS Dataset",    ext: ".sas7bdat", description: "Native SAS data file (used within SAS)" },
+  { id: "xpt",      label: "SAS XPORT",      ext: ".xpt",      description: "Portable exchange format (move between systems)" },
 ];
 
 function triggerDownload(blob: Blob, fileName: string): void {
@@ -464,6 +465,195 @@ export async function exportAsSAS(
   );
 }
 
+// ── SAS7BDAT (native SAS dataset, 32-bit LE, uncompressed) ───────────────────
+// Spec: readstat (https://github.com/WizardMac/ReadStat) + pyreadstat
+
+export async function exportAsSAS7BDAT(
+  csvBlob: Blob,
+  fields: FieldDef[],
+  baseName: string
+): Promise<void> {
+  const { headers, rows } = await parseCsvBlob(csvBlob);
+  const enc = new TextEncoder();
+
+  const nvar = fields.length;
+  const nobs = rows.length;
+  const PAGE_SIZE = 4096;
+  const HEADER_SIZE = 1024;
+
+  // Column widths (cap at 200 bytes per SAS character column limits)
+  const colWidths = fields.map((f) => Math.min(Math.max(f.length, 1), 200));
+
+  // Byte offsets of each column within a row
+  const colOffsets: number[] = [];
+  let rowWidth = 0;
+  for (const w of colWidths) { colOffsets.push(rowWidth); rowWidth += w; }
+
+  // SAS variable names: 8-char uppercase alphanumeric
+  const varNames = fields.map((f) =>
+    f.varName.replace(/[^A-Za-z0-9_]/g, "_").substring(0, 8).toUpperCase()
+  );
+
+  // ── Text pool (column names concatenated, used by col-text subheader) ──────
+  let textPool = "";
+  const nameOffs: number[] = [];
+  const nameLens: number[] = [];
+  for (let v = 0; v < nvar; v++) {
+    nameOffs.push(textPool.length);
+    nameLens.push(varNames[v].length);
+    textPool += varNames[v];
+  }
+  const textPoolBytes = enc.encode(textPool);
+
+  // Pad Uint8Array to multiple of n bytes
+  const padArr = (arr: Uint8Array, n: number): Uint8Array => {
+    const len = Math.ceil(arr.length / n) * n || n;
+    const out = new Uint8Array(len);
+    out.set(arr);
+    return out;
+  };
+
+  // ── Subheader 0: Row size (signature F7×4, row_length@20, row_count@24) ───
+  const rsSH = new Uint8Array(164);
+  const rsDv = new DataView(rsSH.buffer);
+  for (let i = 0; i < 4; i++) rsSH[i] = 0xF7;
+  rsDv.setInt32(20, rowWidth, true);  // bytes per observation
+  rsDv.setInt32(24, nobs, true);      // total observations
+  const rowsPerPage = Math.max(1, Math.floor((PAGE_SIZE - 24) / (rowWidth || 1)));
+  rsDv.setInt32(32, rowsPerPage, true); // mix-page row count estimate
+
+  // ── Subheader 1: Column size (signature F6×4, col_count@4) ───────────────
+  const csSH = new Uint8Array(8);
+  const csDv = new DataView(csSH.buffer);
+  for (let i = 0; i < 4; i++) csSH[i] = 0xF6;
+  csDv.setInt32(4, nvar, true);
+
+  // ── Subheader 2: Column text (length prefix + text pool) ─────────────────
+  const ctRaw = new Uint8Array(2 + textPoolBytes.length);
+  new DataView(ctRaw.buffer).setInt16(0, ctRaw.length, true);
+  ctRaw.set(textPoolBytes, 2);
+  const ctSH = padArr(ctRaw, 8);
+
+  // ── Subheader 3: Column name (8-byte header + nvar×8 entries) ────────────
+  // Each entry: text_sh_index(2) + name_offset(2) + name_len(2) + pad(2)
+  const cnSH = new Uint8Array(8 + nvar * 8);
+  const cnDv = new DataView(cnSH.buffer);
+  for (let v = 0; v < nvar; v++) {
+    const b = 8 + v * 8;
+    cnDv.setInt16(b + 0, 0, true);            // index of col-text subheader
+    cnDv.setInt16(b + 2, nameOffs[v], true);   // offset in text pool
+    cnDv.setInt16(b + 4, nameLens[v], true);   // name length
+  }
+
+  // ── Subheader 4: Column attributes (8-byte header + nvar×12 entries) ──────
+  // Each entry: row_offset(4) + col_type(4, 2=char) + col_width(2) + pad(2)
+  const caSH = new Uint8Array(8 + nvar * 12);
+  const caDv = new DataView(caSH.buffer);
+  for (let v = 0; v < nvar; v++) {
+    const b = 8 + v * 12;
+    caDv.setInt32(b + 0, colOffsets[v], true); // byte offset in row
+    caDv.setInt32(b + 4, 2, true);             // type: 2 = character
+    caDv.setInt16(b + 8, colWidths[v], true);  // column width
+  }
+
+  // ── Subheader 5: Column list (minimal — column indices 0-based) ───────────
+  const clSH = new Uint8Array(8 + nvar * 2);
+  const clDv = new DataView(clSH.buffer);
+  clDv.setInt32(4, nvar, true);
+  for (let v = 0; v < nvar; v++) clDv.setInt16(8 + v * 2, v, true);
+
+  // ── Build META page ────────────────────────────────────────────────────────
+  const rawSHs = [rsSH, csSH, ctRaw, cnSH, caSH, clSH];
+  const paddedSHs = rawSHs.map((sh) => padArr(sh, 8));
+
+  const metaPage = new Uint8Array(PAGE_SIZE);
+  const metaDv = new DataView(metaPage.buffer);
+
+  // Page header (offsets per readstat: type@16, block_count@18, sh_count@20)
+  metaDv.setInt16(16, 0, true);                  // page type: 0 = META
+  metaDv.setInt16(18, paddedSHs.length, true);   // block count
+  metaDv.setInt16(20, paddedSHs.length, true);   // subheader count
+
+  // Subheader pointers start at offset 24; each pointer = 12 bytes (32-bit)
+  const ptrAreaEnd = 24 + paddedSHs.length * 12;
+  let shOff = ptrAreaEnd;
+
+  for (let i = 0; i < paddedSHs.length; i++) {
+    const ptr = 24 + i * 12;
+    metaDv.setInt32(ptr + 0, shOff, true);             // offset in page
+    metaDv.setInt32(ptr + 4, rawSHs[i].length, true);  // logical length
+    // compression=0, type=0, pad=0 already zeroed
+    metaPage.set(paddedSHs[i], shOff);
+    shOff += paddedSHs[i].length;
+  }
+
+  // ── Build DATA pages ───────────────────────────────────────────────────────
+  const dataPages: Uint8Array[] = [];
+  const colIdxMap = new Map(fields.map((f) => [f.varName, headers.indexOf(f.varName)]));
+
+  for (let obsStart = 0; obsStart < Math.max(nobs, 1); obsStart += rowsPerPage) {
+    const dp = new Uint8Array(PAGE_SIZE).fill(0x20);
+    const dpDv = new DataView(dp.buffer);
+    dp.fill(0x00, 0, 24); // clear page header area
+
+    const rowsOnPage = Math.min(rowsPerPage, nobs - obsStart);
+    dpDv.setInt16(16, 256, true);         // page type: 256 = DATA
+    dpDv.setInt16(18, rowsOnPage, true);  // rows on this page
+
+    let rowBase = 24;
+    for (let r = 0; r < rowsOnPage; r++) {
+      const row = rows[obsStart + r];
+      dp.fill(0x20, rowBase, rowBase + rowWidth); // space-pad entire row
+      for (let v = 0; v < nvar; v++) {
+        const ci = colIdxMap.get(fields[v].varName) ?? -1;
+        const val = ci >= 0 ? (row[ci] ?? "") : "";
+        const chunk = encodeFixed(enc, val, colWidths[v], 0x20);
+        dp.set(chunk, rowBase + colOffsets[v]);
+      }
+      rowBase += rowWidth;
+    }
+    dataPages.push(dp);
+    if (obsStart + rowsPerPage >= nobs) break;
+  }
+
+  // ── File header (1024 bytes) ───────────────────────────────────────────────
+  const MAGIC = new Uint8Array([
+    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+    0x00,0x00,0x00,0x00,0xC2,0xEA,0x81,0x60,
+    0xB3,0x14,0x11,0xCF,0xBD,0x92,0x08,0x00,
+    0x09,0xC7,0x31,0x8C,0x18,0x1F,0x10,0x11,
+  ]);
+  const fh = new Uint8Array(HEADER_SIZE);
+  const fhDv = new DataView(fh.buffer);
+  fh.set(MAGIC, 0);
+  fh[32] = 0x00;  // 32-bit (0=32-bit, 4=64-bit)
+  fh[37] = 0x01;  // endian: 1 = little-endian (Windows)
+  fh[39] = 0x57;  // platform: 'W' = Windows
+  fh[70] = 0x14;  // encoding: 20 = UTF-8
+
+  const dsName = baseName.replace(/[^A-Za-z0-9_]/g, "_").substring(0, 8).toUpperCase();
+  fh.set(encodeFixed(enc, dsName,   8,  0x20),  84);  // dataset name
+  fh.set(encodeFixed(enc, "DATA    ", 8, 0x20),  92);  // file type
+  fh.set(encodeFixed(enc, "9.0401M0", 8, 0x20), 216);  // SAS release
+  fh.set(encodeFixed(enc, "X64_WIN ", 8, 0x20), 226);  // SAS host
+
+  fhDv.setInt32(196, HEADER_SIZE, true);               // header_size = 1024
+  fhDv.setInt32(200, PAGE_SIZE,   true);               // page_size   = 4096
+  fhDv.setInt32(204, 1 + dataPages.length, true);      // page_count
+
+  // ── Assemble ───────────────────────────────────────────────────────────────
+  const total = HEADER_SIZE + PAGE_SIZE * (1 + dataPages.length);
+  const out = new Uint8Array(total);
+  out.set(fh, 0);
+  out.set(metaPage, HEADER_SIZE);
+  dataPages.forEach((dp, i) => out.set(dp, HEADER_SIZE + PAGE_SIZE * (i + 1)));
+
+  triggerDownload(
+    new Blob([out], { type: "application/octet-stream" }),
+    `${baseName}_anonymized.sas7bdat`
+  );
+}
+
 // ── JSON ──────────────────────────────────────────────────────────────────────
 
 export async function exportAsJSON(csvBlob: Blob, baseName: string): Promise<void> {
@@ -511,12 +701,13 @@ export async function exportAs(
   baseName: string
 ): Promise<void> {
   switch (format) {
-    case "csv":  exportAsCSV(csvBlob, baseName); break;
-    case "txt":  await exportAsTXT(csvBlob, fields, baseName); break;
-    case "json": await exportAsJSON(csvBlob, baseName); break;
-    case "xlsx": await exportAsExcel(csvBlob, baseName); break;
-    case "dta":  await exportAsStata(csvBlob, fields, baseName); break;
-    case "sav":  await exportAsSPSS(csvBlob, fields, baseName); break;
-    case "xpt":  await exportAsSAS(csvBlob, fields, baseName); break;
+    case "csv":      exportAsCSV(csvBlob, baseName); break;
+    case "txt":      await exportAsTXT(csvBlob, fields, baseName); break;
+    case "json":     await exportAsJSON(csvBlob, baseName); break;
+    case "xlsx":     await exportAsExcel(csvBlob, baseName); break;
+    case "dta":      await exportAsStata(csvBlob, fields, baseName); break;
+    case "sav":      await exportAsSPSS(csvBlob, fields, baseName); break;
+    case "sas7bdat": await exportAsSAS7BDAT(csvBlob, fields, baseName); break;
+    case "xpt":      await exportAsSAS(csvBlob, fields, baseName); break;
   }
 }
