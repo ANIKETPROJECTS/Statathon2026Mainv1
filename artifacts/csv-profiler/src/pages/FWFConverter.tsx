@@ -162,17 +162,12 @@ export default function FWFConverter() {
         try {
           const info = await readExcelFileInfo(file);
           const firstSheet = info.sheetNames[0];
-          const needsPicker = info.sheetNames.length > 1;
           patchLayout(setLayouts, entry.id, {
             excelInfo: info,
-            sheetSelectOpen: needsPicker,
+            sheetSelectOpen: true,
             selectedSheet: firstSheet,
             sheetRowCount: getSheetRowCount(info.buf, firstSheet),
           });
-          if (!needsPicker) {
-            const result = await parseLayoutFile(file);
-            patchLayout(setLayouts, entry.id, result.fields.length ? { result } : { error: result.warnings.join(" ") || "No fields found." });
-          }
         } catch (e) { patchLayout(setLayouts, entry.id, { error: `Read error: ${(e as Error).message}` }); }
       }
     }
