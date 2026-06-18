@@ -72,10 +72,10 @@ function AppLayout() {
           <Route path="/" component={FWFConverter} />
           <Route path="/fwf" component={FWFConverter} />
           <Route path="/risk-assessment/original">
-            {() => <RiskAssessmentSingle mode="original" />}
+            {() => <RiskAssessmentSingle key="original" mode="original" />}
           </Route>
           <Route path="/risk-assessment/anonymized">
-            {() => <RiskAssessmentSingle mode="anonymized" />}
+            {() => <RiskAssessmentSingle key="anonymized" mode="anonymized" />}
           </Route>
           <Route path="/risk-assessment">
             {() => <RiskAssessmentLanding navigate={navigate} />}
