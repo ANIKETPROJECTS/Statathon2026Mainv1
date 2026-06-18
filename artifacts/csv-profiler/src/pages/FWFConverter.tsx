@@ -635,7 +635,7 @@ export default function FWFConverter() {
                           for (const fmt of EXPORT_FORMATS) {
                             if (exportSelected.has(fmt.id)) {
                               setExportingFmt(prev => new Set([...prev, fmt.id]));
-                              await exportAs(fmt.id, encResultBlob, outputBaseName, fields);
+                              await exportAs(fmt.id, encResultBlob, fields, outputBaseName);
                               await new Promise(r => setTimeout(r, 400));
                               setExportingFmt(prev => { const s = new Set(prev); s.delete(fmt.id); return s; });
                             }
@@ -685,7 +685,7 @@ export default function FWFConverter() {
                             onClick={async () => {
                               if (!encResultBlob) return;
                               setExportingFmt(prev => new Set([...prev, fmt.id]));
-                              await exportAs(fmt.id, encResultBlob, outputBaseName, fields);
+                              await exportAs(fmt.id, encResultBlob, fields, outputBaseName);
                               setExportingFmt(prev => { const s = new Set(prev); s.delete(fmt.id); return s; });
                             }}
                             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex-shrink-0 whitespace-nowrap"
