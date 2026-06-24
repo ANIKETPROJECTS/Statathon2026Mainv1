@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, ArrowRight, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, RotateCcw, Download } from "lucide-react";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Algorithm (matches anonymize.ts exactly — used to produce live values)
@@ -78,6 +78,18 @@ function runRound(value: string, ks: Uint8Array, mode: "enc" | "dec"): { output:
 
 interface CharShift { from: string; to: string; k: number; changed: boolean; }
 
+interface KeyDerivStep {
+  seedIdx: number;
+  seed: number;
+  rollingBefore: number;
+  afterMulXor: number;
+  afterMix1: number;
+  afterMul2: number;
+  afterMix2: number;
+  rollingAfter: number;
+  key: string;
+}
+
 interface Trace {
   keys: string[];
   colIVs: number[];
@@ -87,19 +99,25 @@ interface Trace {
   decShifts: CharShift[][];
   finalEncrypted: string;
   finalDecrypted: string;
+  keyDerivSteps: KeyDerivStep[];
 }
 
 function computeTrace(seeds: number[], colName: string, rawValue: string): Trace {
   const value = rawValue || "A";
   let rolling = 0x9e3779b9;
   const keys: string[] = [];
+  const keyDerivSteps: KeyDerivStep[] = [];
   for (let i = 0; i < 4; i++) {
     const seed = seeds[i] ?? 0;
-    rolling = (Math.imul(rolling, 0x9e3779b9) ^ (seed >>> 0)) >>> 0;
-    rolling = (rolling ^ (rolling >>> 16)) >>> 0;
-    rolling = Math.imul(rolling, 0x85ebca6b) >>> 0;
-    rolling = (rolling ^ (rolling >>> 13)) >>> 0;
-    keys.push(generateRandomKey(rolling));
+    const rollingBefore = rolling;
+    const afterMulXor = (Math.imul(rolling, 0x9e3779b9) ^ (seed >>> 0)) >>> 0;
+    const afterMix1 = (afterMulXor ^ (afterMulXor >>> 16)) >>> 0;
+    const afterMul2 = Math.imul(afterMix1, 0x85ebca6b) >>> 0;
+    const afterMix2 = (afterMul2 ^ (afterMul2 >>> 13)) >>> 0;
+    rolling = afterMix2;
+    const key = generateRandomKey(rolling);
+    keys.push(key);
+    keyDerivSteps.push({ seedIdx: i, seed, rollingBefore, afterMulXor, afterMix1, afterMul2, afterMix2, rollingAfter: rolling, key });
   }
 
   const colIVs = keys.map(k => hashColIV(k, colName));
@@ -127,7 +145,281 @@ function computeTrace(seeds: number[], colName: string, rawValue: string): Trace
     dec = output;
   }
 
-  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec };
+  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec, keyDerivSteps };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PDF export — opens a styled print window
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function hex8(n: number) { return "0x" + n.toString(16).toUpperCase().padStart(8, "0"); }
+
+function charTypeName(ch: string): string {
+  const c = ch.charCodeAt(0);
+  if (c >= 48 && c <= 57) return "Digit";
+  if (c >= 65 && c <= 90) return "Uppercase";
+  if (c >= 97 && c <= 122) return "Lowercase";
+  return "Symbol";
+}
+
+function exportTracePDF(trace: Trace, seeds: number[], colName: string, cellValue: string) {
+  const now = new Date().toLocaleString("en-IN", { dateStyle: "long", timeStyle: "short" });
+  const value = cellValue || "A";
+
+  function charTable(shifts: CharShift[], stageLabel: string, outputLabel: string, phase: "enc" | "dec"): string {
+    const rows = shifts.map((s, i) => {
+      const spinAmt = s.changed
+        ? (s.from.match(/[a-zA-Z]/) ? `+${s.k % 25}` : `+${s.k % 9}`)
+        : "—";
+      const bg = i % 2 === 0 ? "#fff" : "#f8f9fa";
+      const resultColor = phase === "enc" ? "#16a34a" : "#2563eb";
+      return `<tr style="background:${bg}">
+        <td>${i + 1}</td>
+        <td style="font-family:monospace;font-weight:bold;color:#2563eb">'${s.from}' (${s.from.charCodeAt(0)})</td>
+        <td>${charTypeName(s.from)}</td>
+        <td style="font-family:monospace;font-weight:bold;color:#b45309">${s.k}</td>
+        <td style="font-family:monospace;color:#7c3aed">${spinAmt}</td>
+        <td style="font-family:monospace;font-weight:bold;color:${resultColor}">'${s.to}' (${s.to.charCodeAt(0)})</td>
+        <td>${s.changed ? (phase === "enc" ? "shifted" : "un-shifted") : "unchanged"}</td>
+      </tr>`;
+    }).join("");
+    return `
+      <div class="section-label">${stageLabel}</div>
+      <div class="value-row">
+        <span class="tag blue">${phase === "enc" ? "Input" : "Encrypted input"}</span>
+        <code>${shifts.map(s => s.from).join("")}</code>
+        <span style="margin:0 8px;color:#94a3b8">→</span>
+        <span class="tag ${phase === "enc" ? "green" : "blue-dark"}">${outputLabel}</span>
+        <code>${shifts.map(s => s.to).join("")}</code>
+      </div>
+      <table>
+        <thead><tr>
+          <th>#</th><th>Input char</th><th>Type</th><th>Key byte (k)</th>
+          <th>Spin amount</th><th>Output char</th><th>Action</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  const keyDerivRows = trace.keyDerivSteps.map((s, i) => {
+    const bg = i % 2 === 0 ? "#fff" : "#f8f9fa";
+    return `<tr style="background:${bg}">
+      <td>${i + 1}</td>
+      <td style="font-family:monospace;font-weight:bold">${s.seed}</td>
+      <td style="font-family:monospace">${hex8(s.rollingBefore)}</td>
+      <td style="font-family:monospace">${hex8(s.afterMulXor)}</td>
+      <td style="font-family:monospace">${hex8(s.afterMix1)}</td>
+      <td style="font-family:monospace">${hex8(s.afterMul2)}</td>
+      <td style="font-family:monospace">${hex8(s.afterMix2)}</td>
+      <td style="font-family:monospace;word-break:break-all;font-size:9px">${s.key}</td>
+    </tr>`;
+  }).join("");
+
+  const encRoundSections = trace.encShifts.map((shifts, i) => `
+    <div class="phase-card">
+      <div class="round-header green">Round ${i + 1} of 4 — Key ${i + 1}</div>
+      <div class="key-display"><strong>Key:</strong> <code>${trace.keys[i]}</code></div>
+      <div class="key-display"><strong>Column IV:</strong> <code>${hex8(trace.colIVs[i])}</code></div>
+      ${charTable(shifts, `Encrypting with Key ${i + 1}`, `After round ${i + 1}`, "enc")}
+    </div>`).join("");
+
+  const decRoundSections = trace.decShifts.map((shifts, i) => `
+    <div class="phase-card">
+      <div class="round-header violet">Undo Round ${4 - i} of 4 — Key ${4 - i}</div>
+      <div class="key-display"><strong>Key:</strong> <code>${trace.keys[3 - i]}</code></div>
+      <div class="key-display"><strong>Column IV:</strong> <code>${hex8(trace.colIVs[3 - i])}</code></div>
+      ${charTable(shifts, `Decrypting with Key ${4 - i}`, i === 3 ? "Original recovered ✓" : `After undo ${i + 1}`, "dec")}
+    </div>`).join("");
+
+  const journeyRows = trace.encStages.map((s, i) => `
+    <tr style="background:${i % 2 === 0 ? "#fff" : "#f8f9fa"}">
+      <td>${i === 0 ? "Original" : `After encryption round ${i}`}</td>
+      <td style="font-family:monospace;font-weight:bold;color:${i === 0 ? "#2563eb" : i === 4 ? "#16a34a" : "#374151"}">${s}</td>
+      <td>${i === 0 ? "Starting value" : `Key ${i} applied (forward)`}</td>
+    </tr>`).join("") + trace.decStages.slice(1).map((s, i) => `
+    <tr style="background:${(i + 1) % 2 === 0 ? "#fff" : "#f8f9fa"}">
+      <td>${i === trace.decStages.length - 2 ? "Fully decrypted" : `After undo round ${i + 1}`}</td>
+      <td style="font-family:monospace;font-weight:bold;color:${i === trace.decStages.length - 2 ? "#2563eb" : "#374151"}">${s}</td>
+      <td>${`Key ${4 - i} reversed`}</td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>AIRAVATA DEA — Anonymization Trace Report</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", system-ui, sans-serif; font-size: 11px; color: #1e293b; background: #fff; }
+    @page { size: A4; margin: 18mm 16mm; }
+    @media print { body { font-size: 10px; } .no-print { display: none !important; } }
+
+    /* Header */
+    .report-header { border-bottom: 3px solid #4f46e5; padding-bottom: 14px; margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; }
+    .report-title { font-size: 22px; font-weight: 800; color: #3730a3; letter-spacing: -0.5px; }
+    .report-subtitle { font-size: 12px; color: #6366f1; margin-top: 2px; }
+    .report-meta { text-align: right; font-size: 10px; color: #64748b; line-height: 1.6; }
+
+    /* Params box */
+    .params-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
+    .param-box { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; }
+    .param-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 4px; }
+    .param-value { font-family: monospace; font-size: 13px; font-weight: 700; color: #1e293b; }
+    .seeds-row { display: flex; gap: 6px; }
+    .seed-chip { background: #e0e7ff; border: 1px solid #a5b4fc; border-radius: 6px; padding: 3px 8px; font-family: monospace; font-weight: 700; color: #3730a3; }
+
+    /* Phase headings */
+    .phase-heading { font-size: 15px; font-weight: 800; color: #1e293b; margin: 24px 0 10px; padding: 8px 14px; background: #f8fafc; border-left: 4px solid #4f46e5; border-radius: 0 6px 6px 0; }
+    .phase-sub { font-size: 10px; color: #64748b; font-weight: 400; margin-left: 8px; }
+    .phase-card { margin-bottom: 18px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; break-inside: avoid; }
+    .round-header { font-weight: 700; font-size: 12px; margin-bottom: 8px; padding: 4px 10px; border-radius: 5px; display: inline-block; }
+    .round-header.green { background: #dcfce7; color: #15803d; }
+    .round-header.violet { background: #ede9fe; color: #6d28d9; }
+    .key-display { font-size: 9.5px; color: #475569; margin-bottom: 5px; line-height: 1.5; }
+    .key-display code { font-family: monospace; font-size: 9px; color: #1e293b; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; word-break: break-all; }
+    .section-label { font-weight: 600; font-size: 10px; color: #475569; margin: 10px 0 5px; }
+
+    /* Value display row */
+    .value-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border-radius: 7px; flex-wrap: wrap; }
+    .value-row code { font-family: monospace; font-size: 14px; font-weight: 700; color: #1e293b; }
+    .tag { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 20px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .tag.blue { background: #dbeafe; color: #1d4ed8; }
+    .tag.green { background: #dcfce7; color: #15803d; }
+    .tag.blue-dark { background: #1e40af; color: #fff; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 10px; }
+    th { background: #1e293b; color: #f8fafc; font-size: 9.5px; font-weight: 600; text-align: left; padding: 5px 7px; }
+    td { padding: 4px 7px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+
+    /* Journey table */
+    .journey-section { margin-top: 20px; break-inside: avoid; }
+    .summary-box { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 14px 18px; margin-top: 20px; }
+    .summary-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; color: #15803d; margin-bottom: 4px; }
+    .summary-val { font-family: monospace; font-size: 16px; font-weight: 800; color: #14532d; }
+    .match-badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-weight: 700; font-size: 10px; margin-top: 8px; }
+    .match-ok { background: #16a34a; color: #fff; }
+    .match-fail { background: #dc2626; color: #fff; }
+
+    /* Footer */
+    .report-footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #94a3b8; display: flex; justify-content: space-between; }
+
+    /* Print button */
+    .print-btn { no-print; position: fixed; top: 20px; right: 20px; background: #4f46e5; color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 13px; font-weight: 700; cursor: pointer; z-index: 999; box-shadow: 0 4px 12px rgba(79,70,229,0.4); }
+    .print-btn:hover { background: #4338ca; }
+  </style>
+</head>
+<body>
+  <button class="print-btn no-print" onclick="window.print()">🖨️ Save as PDF</button>
+
+  <div class="report-header">
+    <div>
+      <div class="report-title">AIRAVATA DEA</div>
+      <div class="report-subtitle">Anonymization Step-by-Step Trace Report</div>
+    </div>
+    <div class="report-meta">
+      Generated: ${now}<br/>
+      Algorithm: 4-Round FPE Chain (xorshift128+)<br/>
+      Key size: 256 bits per round
+    </div>
+  </div>
+
+  <!-- Parameters -->
+  <div class="params-grid">
+    <div class="param-box">
+      <div class="param-label">Seeds (in order)</div>
+      <div class="seeds-row">${seeds.map(s => `<span class="seed-chip">${s}</span>`).join("")}</div>
+    </div>
+    <div class="param-box">
+      <div class="param-label">Column name</div>
+      <div class="param-value">${colName || "(none)"}</div>
+    </div>
+    <div class="param-box">
+      <div class="param-label">Cell value</div>
+      <div class="param-value">${value}</div>
+    </div>
+  </div>
+
+  <!-- Phase 1: Key Generation -->
+  <div class="phase-heading">Phase 1 — Master Key Generation <span class="phase-sub">How 4 seed numbers become 4 secret keys</span></div>
+  <p style="font-size:10px;color:#475569;margin-bottom:10px;line-height:1.6">
+    Starting from the golden-ratio constant <code style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:3px">0x9E3779B9</code>,
+    each seed is "mixed in" using a Horner-style multiply-XOR fold followed by two avalanche passes (MurmurHash3 finaliser).
+    The final rolling accumulator is fed into xorshift128+ to generate 256 random bits — the round key.
+  </p>
+  <table>
+    <thead><tr>
+      <th>Round</th><th>Seed</th><th>Rolling before</th><th>After mul⊕seed</th>
+      <th>After mix #1</th><th>After mul #2</th><th>After mix #2</th><th>Key (256 bits)</th>
+    </tr></thead>
+    <tbody>${keyDerivRows}</tbody>
+  </table>
+
+  <!-- Phase 2: Encryption -->
+  <div class="phase-heading" style="page-break-before:always">Phase 2 — Encryption <span class="phase-sub">4 rounds of Format-Preserving Encryption applied in order</span></div>
+  <p style="font-size:10px;color:#475569;margin-bottom:10px;line-height:1.6">
+    Each round derives a keystream from the round key and the column IV. Each alphanumeric character is shifted forward
+    within its alphabet (digits 0–9, uppercase A–Z, lowercase a–z) by <em>1 + (keyByte mod alphabetSize)</em>.
+    Symbols are left unchanged. The 4 rounds are applied in sequence (R1 → R2 → R3 → R4).
+  </p>
+  ${encRoundSections}
+
+  <!-- Phase 3: Decryption -->
+  <div class="phase-heading" style="page-break-before:always">Phase 3 — Decryption <span class="phase-sub">4 rounds reversed in reverse order (R4 → R3 → R2 → R1)</span></div>
+  <p style="font-size:10px;color:#475569;margin-bottom:10px;line-height:1.6">
+    Decryption uses the <em>identical</em> keystream bytes as the corresponding encryption round (same key + same IV = same bytes).
+    Instead of shifting forward, each character is shifted <em>backward</em> by the same amount.
+    Rounds are applied in reverse order: R4 first, then R3, R2, R1.
+  </p>
+  ${decRoundSections}
+
+  <!-- Full journey table -->
+  <div class="journey-section">
+    <div class="phase-heading">Full Journey — Value at every stage</div>
+    <table>
+      <thead><tr><th>Stage</th><th>Value</th><th>Note</th></tr></thead>
+      <tbody>${journeyRows}</tbody>
+    </table>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-box">
+    <div style="display:flex;gap:40px;align-items:flex-start">
+      <div>
+        <div class="summary-label">Original value</div>
+        <div class="summary-val">${value}</div>
+      </div>
+      <div style="font-size:20px;margin-top:12px;color:#94a3b8">→</div>
+      <div>
+        <div class="summary-label">Anonymized value</div>
+        <div class="summary-val" style="color:#15803d">${trace.finalEncrypted}</div>
+      </div>
+      <div style="font-size:20px;margin-top:12px;color:#94a3b8">→</div>
+      <div>
+        <div class="summary-label">Decrypted value</div>
+        <div class="summary-val" style="color:#1d4ed8">${trace.finalDecrypted}</div>
+      </div>
+    </div>
+    <div class="match-badge ${trace.finalDecrypted === value ? "match-ok" : "match-fail"}">
+      ${trace.finalDecrypted === value ? "✓ Perfect round-trip — decrypted value matches original exactly" : "⚠ Mismatch detected"}
+    </div>
+  </div>
+
+  <div class="report-footer">
+    <div>AIRAVATA DEA — Anonymization Trace Report</div>
+    <div>${now}</div>
+  </div>
+
+  <script>
+    window.addEventListener("load", () => { setTimeout(() => window.print(), 400); });
+  </script>
+</body>
+</html>`;
+
+  const win = window.open("", "_blank", "width=900,height=700");
+  if (!win) { alert("Please allow pop-ups for this page to download the PDF."); return; }
+  win.document.write(html);
+  win.document.close();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -744,7 +1036,7 @@ export function GuideSection() {
       </div>
 
       {/* ── Navigation ────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-slate-200 px-10 py-5 bg-white flex items-center justify-between">
+      <div className="shrink-0 border-t border-slate-200 px-10 py-4 bg-white flex items-center justify-between gap-4">
         <button
           onClick={goBack}
           disabled={step === 0}
@@ -754,10 +1046,23 @@ export function GuideSection() {
           Back
         </button>
 
-        <div className="flex gap-2">
-          {STEP_LABELS.map((_, i) => (
-            <button key={i} onClick={() => setStep(i)} className={`w-2.5 h-2.5 rounded-full transition-all ${i === step ? "bg-indigo-600 w-6" : i < step ? "bg-green-400" : "bg-slate-300"}`} />
-          ))}
+        <div className="flex items-center gap-4">
+          {/* Dot pips */}
+          <div className="flex gap-2">
+            {STEP_LABELS.map((_, i) => (
+              <button key={i} onClick={() => setStep(i)} className={`h-2.5 rounded-full transition-all ${i === step ? "bg-indigo-600 w-6" : i < step ? "bg-green-400 w-2.5" : "bg-slate-300 w-2.5"}`} />
+            ))}
+          </div>
+
+          {/* Export PDF button — always visible */}
+          <button
+            onClick={() => exportTracePDF(trace, seeds, colName, cellValue)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm bg-slate-800 text-white hover:bg-slate-700 transition-colors border border-slate-700"
+            title="Download full trace as PDF"
+          >
+            <Download className="w-4 h-4" />
+            Export PDF
+          </button>
         </div>
 
         <button
