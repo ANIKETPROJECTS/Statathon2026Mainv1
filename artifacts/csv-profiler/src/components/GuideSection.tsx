@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { ChevronLeft, ChevronRight, ArrowRight, RotateCcw, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, ArrowDown, RotateCcw, Download } from "lucide-react";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Algorithm (matches anonymize.ts exactly — used to produce live values)
@@ -1215,6 +1215,165 @@ export function GuideSection() {
               <p className="text-lg text-slate-500 leading-relaxed">
                 Here's everything that happened — with real numbers — plus the security properties that make this algorithm trustworthy.
               </p>
+            </div>
+
+            {/* ── Live System Trace Diagram ─────────────────────────── */}
+            <div className="rounded-2xl bg-black border border-slate-700 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-800 text-center">
+                <h3 className="text-white font-bold text-lg">🔍 Full System Trace — Your Actual Values</h3>
+                <p className="text-slate-400 text-sm mt-1">Seeds [{seeds.join(", ")}] · Column "{colName}" · Value "{cellValue || "A"}"</p>
+              </div>
+              <div className="p-6 space-y-4">
+
+                {/* Seeds */}
+                <div className="flex items-stretch gap-3 justify-center">
+                  {seeds.map((s, i) => (
+                    <div key={i} className="bg-slate-800 border border-slate-600 rounded-xl px-5 py-3 text-center">
+                      <div className="text-[10px] text-slate-400 font-semibold uppercase mb-1">Seed {i+1}</div>
+                      <div className="font-mono font-bold text-white text-xl">{s}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Seeds → Master Seed arrow */}
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="text-[10px] text-slate-500 font-semibold">fold via rolling accumulator + MurmurHash3</div>
+                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                </div>
+
+                {/* Master Seed */}
+                <div className="mx-auto w-fit bg-indigo-950 border border-indigo-700 rounded-xl px-10 py-3 text-center">
+                  <div className="text-[10px] text-indigo-400 font-semibold uppercase mb-1">Master Seed (32-bit)</div>
+                  <div className="font-mono font-bold text-indigo-200 text-base">{"0x" + trace.masterSeed.toString(16).toUpperCase().padStart(8,"0")}</div>
+                </div>
+
+                {/* Master Seed → Master Key arrow */}
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="text-[10px] text-slate-500 font-semibold">xorshift128+(masterSeed ⊕ 0xDEADBEEF) → 32 bytes</div>
+                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                </div>
+
+                {/* Master Key */}
+                <div className="bg-violet-950 border border-violet-700 rounded-xl px-6 py-3 text-center">
+                  <div className="text-[10px] text-violet-400 font-semibold uppercase mb-1">Master Key (256-bit)</div>
+                  <div className="font-mono text-violet-200 text-xs">{trace.masterKey.slice(0,24)}<span className="text-violet-600">…</span>{trace.masterKey.slice(-24)}</div>
+                </div>
+
+                {/* Master Key → 4 Round Keys arrow */}
+                <div className="flex flex-col items-center gap-0.5">
+                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="text-[10px] text-slate-500 font-semibold">split into 4 round keys via XOR + rolling mixer</div>
+                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                </div>
+
+                {/* 4 Round Keys */}
+                <div className="grid grid-cols-4 gap-2">
+                  {trace.keys.map((k, i) => {
+                    const bgs = ["bg-blue-950 border-blue-800","bg-sky-950 border-sky-800","bg-teal-950 border-teal-800","bg-emerald-950 border-emerald-800"];
+                    const texts = ["text-blue-300","text-sky-300","text-teal-300","text-emerald-300"];
+                    return (
+                      <div key={i} className={`${bgs[i]} border rounded-xl p-3 text-center`}>
+                        <div className={`text-[10px] font-bold uppercase mb-1 ${texts[i]}`}>Key {i+1}</div>
+                        <div className={`font-mono text-[9px] break-all leading-relaxed ${texts[i]}`}>{k.slice(0,10)}…{k.slice(-6)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 4-round label */}
+                <div className="flex flex-col items-center gap-0.5 pt-1">
+                  <div className="w-px h-2 bg-slate-600"/>
+                  <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">4-round character shifting</div>
+                  <div className="w-px h-2 bg-slate-600"/>
+                </div>
+
+                {/* 4 Encryption Rounds */}
+                {[0,1,2,3].map(ri => {
+                  const bgs = ["bg-blue-950 border-blue-800","bg-sky-950 border-sky-800","bg-teal-950 border-teal-800","bg-emerald-950 border-emerald-800"];
+                  const textCols = ["text-blue-300","text-sky-300","text-teal-300","text-emerald-300"];
+                  const ks = trace.ksFirstBytes[ri].slice(0,4);
+                  const shifts = trace.encShifts[ri].slice(0,4).map(s => {
+                    if (!s.changed) return "—";
+                    return s.from.match(/[a-zA-Z]/) ? `+${1 + s.k % 25}` : `+${1 + s.k % 9}`;
+                  });
+                  return (
+                    <div key={ri} className={`border ${bgs[ri].split(" ")[1]} rounded-xl p-3`}>
+                      <div className="flex items-center gap-2">
+                        <div className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
+                          <div className="text-[9px] text-slate-400 mb-0.5">{ri === 0 ? "Input" : `R${ri} out`}</div>
+                          <div className="font-mono font-bold text-white text-sm truncate">{trace.encStages[ri]}</div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-600 shrink-0"/>
+                        <div className={`${bgs[ri].split(" ")[0]} border ${bgs[ri].split(" ")[1]} rounded-lg px-3 py-2 flex-1`}>
+                          <div className={`font-bold text-[10px] ${textCols[ri]} mb-1`}>Round {ri+1} — Key {ri+1} + xorshift128+</div>
+                          <div className="text-[9px] text-slate-400">Keystream: {ks.join(", ")} → shifts: {shifts.join(", ")}</div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-slate-600 shrink-0"/>
+                        <div className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
+                          <div className="text-[9px] text-slate-400 mb-0.5">After R{ri+1}</div>
+                          <div className={`font-mono font-bold text-sm truncate ${ri === 3 ? "text-green-300" : "text-white"}`}>{trace.encStages[ri+1]}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Full transformation chain strip */}
+                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                  <div className="text-[10px] text-slate-500 text-center mb-3 uppercase font-semibold tracking-wide">Full transformation chain</div>
+                  <div className="flex items-center justify-center gap-1 flex-wrap">
+                    {trace.encStages.map((stage, i) => (
+                      <>
+                        <div key={`s${i}`} className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg border ${i === 0 ? "text-blue-300 bg-blue-900/40 border-blue-700" : i === 4 ? "text-green-300 bg-green-900/40 border-green-700" : "text-slate-300 bg-slate-800 border-slate-700"}`}>
+                          {stage}
+                        </div>
+                        {i < 4 && (
+                          <div key={`a${i}`} className="flex flex-col items-center shrink-0">
+                            <ArrowRight className="w-4 h-4 text-slate-600"/>
+                            <span className="text-[8px] text-slate-600">R{i+1}</span>
+                          </div>
+                        )}
+                      </>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reversible section */}
+                <div className="bg-violet-950 border border-violet-800 rounded-xl p-4 text-center">
+                  <div className="font-bold text-violet-300 mb-2 text-sm">↔️ Reversible with the same keys</div>
+                  <div className="text-[10px] text-violet-400 mb-3">
+                    Decrypt: run rounds {[4,3,2,1].join(" → ")} (reverse order)
+                  </div>
+                  <div className="flex items-center justify-center gap-1 flex-wrap mb-3">
+                    {trace.decStages.map((stage, i) => (
+                      <>
+                        <div key={`ds${i}`} className={`font-mono font-bold text-xs px-2 py-1 rounded border ${i === 0 ? "text-green-300 bg-green-900/40 border-green-700" : i === 4 ? "text-blue-300 bg-blue-900/40 border-blue-700" : "text-slate-300 bg-slate-800 border-slate-700"}`}>
+                          {stage}
+                        </div>
+                        {i < 4 && (
+                          <div key={`da${i}`} className="flex flex-col items-center shrink-0">
+                            <ArrowRight className="w-3 h-3 text-violet-700"/>
+                            <span className="text-[8px] text-violet-700">K{4-i}</span>
+                          </div>
+                        )}
+                      </>
+                    ))}
+                  </div>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-700 text-green-200" : "bg-red-800 text-red-200"}`}>
+                    {trace.finalDecrypted === (cellValue || "A") ? `✓  "${trace.finalEncrypted}" → "${trace.finalDecrypted}" — matches original exactly` : `⚠ Mismatch: got "${trace.finalDecrypted}"`}
+                  </span>
+                </div>
+
+                {/* Footer notes */}
+                <div className="space-y-1 text-center pt-1">
+                  <p className="text-[10px] text-slate-600">Tiebreaker check: {trace.finalEncrypted} {trace.finalEncrypted === (cellValue || "A") ? "= original ← tiebreaker round applied" : "≠ original ✓  no collision, no adjustment needed"}</p>
+                  <p className="text-[10px] text-slate-600">Column IV: same value "{cellValue || "A"}" in a different column → different ciphertext (column name "{colName}" is hashed into IV)</p>
+                  <p className="text-[10px] text-slate-600">This prevents frequency analysis across columns even when values repeat</p>
+                </div>
+
+              </div>
             </div>
 
             {/* Big journey combined */}
