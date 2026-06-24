@@ -231,12 +231,13 @@ export function resolveKeyChain(options: AnonymizeOptions): string[] {
   //   Phase 1: Fold all 4 seeds in sequence into a single 32-bit master seed.
   //            Reordering any two seeds changes the master seed and therefore
   //            all four round keys — seed sequence is cryptographically significant.
-  //   Phase 2: Expand the master seed into 128 bytes (1024 bits) of key material
+  //   Phase 2: Expand the master seed into one 256-bit master key (32 bytes)
   //            via xorshift128+ seeded with (masterSeed ⊕ 0xDEADBEEF).
-  //   Phase 3: Slice the 128-byte block into four 32-byte (256-bit) round keys.
+  //   Phase 3: Derive 4 round keys from the master key via XOR + rolling mixer
+  //            seeded from the master key's first 32 bits (same as hex-key mode).
   const s = options.seeds;
   const ordered = [s[0] ?? 42, s[1] ?? 137, s[2] ?? 2024, s[3] ?? 7];
-  // Phase 1 — fold
+  // Phase 1 — fold all 4 seeds into a single 32-bit master seed
   let rolling = 0x9e3779b9;
   for (const seed of ordered) {
     rolling = (Math.imul(rolling, 0x9e3779b9) ^ (seed >>> 0)) >>> 0;
@@ -244,15 +245,16 @@ export function resolveKeyChain(options: AnonymizeOptions): string[] {
     rolling = (Math.imul(rolling, 0x85ebca6b)) >>> 0;
     rolling = (rolling ^ (rolling >>> 13)) >>> 0;
   }
-  // Phase 2 — expand master seed into 128 bytes
-  const masterRng = makeKeystream((rolling ^ 0xdeadbeef) >>> 0);
-  const masterBytes = Array.from({ length: 128 }, () => Math.floor(masterRng() * 256));
-  // Phase 3 — split into 4 × 32-byte round keys
-  return [0, 1, 2, 3].map(i =>
-    masterBytes.slice(i * 32, (i + 1) * 32)
-      .map(b => b.toString(16).padStart(2, "0"))
-      .join("")
-  );
+  // Phase 2 — expand master seed into a single 256-bit master key via xorshift128+
+  const masterKey = generateRandomKey(rolling);
+  // Phase 3 — derive 4 round keys from master key via XOR + rolling mixer
+  //   (same mechanism as hex-key mode — seeded from first 32 bits of master key)
+  let rollingK = (parseInt(masterKey.slice(0, 8), 16) ^ 0xdeadbeef) >>> 0;
+  return [0, 1, 2, 3].map(i => {
+    rollingK = (Math.imul(rollingK, 0x9e3779b9) ^ (i * 0x5a5a5a5b)) >>> 0;
+    rollingK = (rollingK ^ (rollingK >>> 16)) >>> 0;
+    return generateRandomKey(rollingK);
+  });
 }
 
 // Compat: return first key (used by UI to display "the key" summary)

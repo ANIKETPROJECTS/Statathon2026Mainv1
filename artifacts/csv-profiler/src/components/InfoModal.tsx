@@ -103,25 +103,28 @@ For each seed sᵢ in {s₁, s₂, s₃, s₄}:
 
 masterSeed = rolling   [32-bit — encodes all 4 seeds and their order]`}</Formula>
 
-      <H>Step 4 — Master Key Expansion and Round-Key Split</H>
-      <P>The master seed is expanded into <strong>128 bytes (1024 bits)</strong> of key material via xorshift128+, then that single master key is sliced into four 32-byte (256-bit) round keys:</P>
-      <Formula>{`// Phase 2 — expand master seed into 128 bytes
-masterPRNG_seed = (masterSeed ⊕ 0xDEADBEEF) >>> 0
-masterKey[i]    = ⌊ xorshift128+(masterPRNG_seed) × 256 ⌋   for i = 0..127
+      <H>Step 4 — Master Key Expansion and Round-Key Derivation</H>
+      <P>The master seed expands into a single <strong>256-bit master key</strong> via xorshift128+. Four independent round keys are then derived from the master key using an XOR + rolling mixer — the same mechanism used in hex-key mode:</P>
+      <Formula>{`// Phase 2 — expand master seed into one 256-bit master key
+masterKey[i] = ⌊ xorshift128+((masterSeed ⊕ 0xDEADBEEF) >>> 0) × 256 ⌋   for i = 0..31
+masterKeyHex = masterKey.map(b => hex(b)).join("")   [64 hex chars]
 
-// Phase 3 — split into 4 × 32-byte round keys
-keyChain[0] = masterKey[ 0.. 31]   [256 bits = 64 hex chars]
-keyChain[1] = masterKey[32.. 63]
-keyChain[2] = masterKey[64.. 95]
-keyChain[3] = masterKey[96..127]`}</Formula>
+// Phase 3 — derive 4 round keys via XOR + rolling mixer
+r = (parseInt(masterKeyHex[0..7], 16) ⊕ 0xDEADBEEF) >>> 0
+
+For each round i ∈ {0, 1, 2, 3}:
+  r ← (r × 0x9E3779B9) ⊕ (i × 0x5A5A5A5B)   >>> 0
+  r ← r ⊕ (r >>> 16)                          >>> 0
+  keyChain[i] = generateKey(r)                 [32-byte xorshift128+ output]`}</Formula>
 
       <Table rows={[
         ["s₁, s₂, s₃, s₄", "Four integer seeds (user-supplied, order matters)"],
-        ["rolling / masterSeed", "32-bit accumulator; final value encodes all 4 seeds"],
+        ["rolling / masterSeed", "32-bit accumulator; final value encodes all 4 seeds and their order"],
+        ["masterKeyHex", "64-char hex string (256-bit) derived from masterSeed via xorshift128+"],
         ["0x9E3779B9", "Golden-ratio constant (Knuth multiplicative hash)"],
-        ["0x85EBCA6B", "MurmurHash3 mix constant"],
-        ["masterKey", "128-byte key material expanded from masterSeed via xorshift128+"],
-        ["keyChain[i]", "32-byte (256-bit) round key — a 32-byte slice of masterKey"],
+        ["0x85EBCA6B", "MurmurHash3 mix constant (Phase 1 avalanche)"],
+        ["0x5A5A5A5B", "Round-index multiplier (Phase 3 key diversification)"],
+        ["keyChain[i]", "32-byte (256-bit) round key derived from master key via rolling mixer"],
       ]} />
 
       <H>Passphrase Mode (PBKDF2-like)</H>
