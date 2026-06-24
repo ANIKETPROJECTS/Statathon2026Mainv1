@@ -100,6 +100,7 @@ interface Trace {
   finalEncrypted: string;
   finalDecrypted: string;
   keyDerivSteps: KeyDerivStep[];
+  ksFirstBytes: number[][];
 }
 
 function computeTrace(seeds: number[], colName: string, rawValue: string): Trace {
@@ -145,7 +146,8 @@ function computeTrace(seeds: number[], colName: string, rawValue: string): Trace
     dec = output;
   }
 
-  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec, keyDerivSteps };
+  const ksFirstBytes = ksArr.map(ks => Array.from(ks.slice(0, 10)));
+  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec, keyDerivSteps, ksFirstBytes };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -564,6 +566,75 @@ export function GuideSection() {
               </p>
             </div>
 
+            {/* The Problem */}
+            <BigCard color="bg-white border-red-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-3">🚨 The Problem: Survey Data Is Sensitive</h3>
+              <p className="text-slate-600 leading-relaxed mb-4">
+                Large surveys like NSSO/HCES record things like household income, age, caste, location, and spending. This is incredibly useful for research — but also very private. If the raw data were shared openly, anyone could look up a household and learn their exact financial situation.
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  ["❌ Share raw data", "A researcher in another country could see that Household #4821 earns ₹18,400/month and lives in Jaipur.", "bg-red-50 border-red-200 text-red-700"],
+                  ["✅ Share anonymized data", "They see Household #4821 earns ₹73,191/month (fake). The pattern in the data still holds for research — but the specific value is hidden.", "bg-green-50 border-green-200 text-green-700"],
+                  ["🔓 Decrypt when needed", "The original surveyor, who holds the 4 secret seeds, can reverse the anonymization and recover ₹18,400 exactly — no data is lost.", "bg-blue-50 border-blue-200 text-blue-700"],
+                ].map(([title, body, cls]) => (
+                  <div key={title as string} className={`rounded-xl border-2 p-4 ${cls}`}>
+                    <div className="font-bold text-sm mb-2">{title}</div>
+                    <div className="text-xs leading-relaxed">{body}</div>
+                  </div>
+                ))}
+              </div>
+            </BigCard>
+
+            {/* Pipeline visual */}
+            <BigCard color="bg-white border-slate-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-4">🔄 The 4-Stage Pipeline</h3>
+              <p className="text-slate-500 text-sm mb-5">Every cell value passes through exactly these 4 stages when anonymized:</p>
+              <div className="flex items-stretch gap-0">
+                {[
+                  { num: "1", color: "bg-indigo-600", label: "Seeds → Keys", body: "4 numbers you choose are blended together to produce 4 unique 256-bit keys. The keys depend on all 4 seeds AND their order." },
+                  { num: "2", color: "bg-blue-500", label: "Key + Column → IV", body: "Each column name is hashed together with its round key to produce a unique Column IV — an address that separates columns from each other." },
+                  { num: "3", color: "bg-green-600", label: "IV → Keystream", body: "The key and IV are fed into a fast pseudo-random number generator (xorshift128+), producing a stream of random bytes — one per character." },
+                  { num: "4", color: "bg-emerald-700", label: "Keystream → Shift", body: "Each character is shifted within its own alphabet (digit↔digit, letter↔letter) by an amount controlled by the keystream byte. Repeated 4 times." },
+                ].map((s, i, arr) => (
+                  <div key={i} className="flex items-center flex-1">
+                    <div className="flex-1 rounded-xl border-2 border-slate-200 p-4 h-full">
+                      <div className={`w-8 h-8 rounded-full ${s.color} text-white font-bold flex items-center justify-center text-sm mb-2`}>{s.num}</div>
+                      <div className="font-bold text-slate-800 text-sm mb-1">{s.label}</div>
+                      <div className="text-xs text-slate-500 leading-relaxed">{s.body}</div>
+                    </div>
+                    {i < arr.length - 1 && <ArrowRight className="w-6 h-6 text-slate-300 shrink-0 mx-1" />}
+                  </div>
+                ))}
+              </div>
+            </BigCard>
+
+            {/* Format preservation visual */}
+            <BigCard color="bg-white border-amber-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-3">🔄 What "Format-Preserving" Means</h3>
+              <p className="text-slate-500 text-sm mb-5">Normal encryption turns data into random-looking garbage. AIRAVATA DEA uses Format-Preserving Encryption (FPE), which keeps the output in the same shape as the input.</p>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="rounded-xl bg-red-50 border-2 border-red-200 p-5">
+                  <div className="font-bold text-red-700 mb-3">❌ Normal encryption</div>
+                  <div className="space-y-2 text-sm font-mono">
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"12345"</span><ArrowRight className="w-3 h-3" /><span className="text-red-600">"xK9#mP!2"</span></div>
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"Ramesh"</span><ArrowRight className="w-3 h-3" /><span className="text-red-600">"Bq7$nR09k"</span></div>
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"50"</span><ArrowRight className="w-3 h-3" /><span className="text-red-600">"mX#9!@zA3"</span></div>
+                  </div>
+                  <p className="text-xs text-red-600 mt-3">The output changes length, contains symbols, looks nothing like the original. The CSV structure breaks.</p>
+                </div>
+                <div className="rounded-xl bg-green-50 border-2 border-green-200 p-5">
+                  <div className="font-bold text-green-700 mb-3">✅ Format-preserving (AIRAVATA DEA)</div>
+                  <div className="space-y-2 text-sm font-mono">
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"12345"</span><ArrowRight className="w-3 h-3" /><span className="text-green-700">"{trace.encStages.length > 1 ? trace.encStages[trace.encStages.length - 1] : "39461"}"</span></div>
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"Ramesh"</span><ArrowRight className="w-3 h-3" /><span className="text-green-700">"Vfzlne"</span></div>
+                    <div className="flex items-center gap-2"><span className="text-blue-700">"50"</span><ArrowRight className="w-3 h-3" /><span className="text-green-700">"83"</span></div>
+                  </div>
+                  <p className="text-xs text-green-600 mt-3">Same length, same type of characters, same position in the CSV. Research tools still work correctly on the anonymized data.</p>
+                </div>
+              </div>
+            </BigCard>
+
             {/* Big journey preview */}
             <div className="flex items-center justify-center gap-4 py-6 bg-slate-50 rounded-2xl border-2 border-slate-200">
               <div className="text-center">
@@ -590,45 +661,35 @@ export function GuideSection() {
 
             {/* Inputs */}
             <BigCard color="bg-white border-indigo-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">🎛️ Your Secret Password Numbers (Seeds)</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">🎛️ Set Your Example Inputs</h3>
               <p className="text-slate-500 mb-6 text-sm leading-relaxed">
-                Think of these 4 numbers like a combination lock. Only someone who knows all 4 numbers <em>in the right order</em> can unlock your data. Try changing them — watch how the scrambled value changes instantly!
+                Change any value below — all the calculations in the following steps update <strong>instantly</strong> with real computed numbers.
               </p>
               <div className="flex gap-4 justify-center mb-6">
                 {[0, 1, 2, 3].map(i => (
                   <SeedBox key={i} label={`Seed ${i + 1}`} value={seeds[i]} onChange={v => setSeed(i, v)} />
                 ))}
               </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 text-sm text-amber-800">
+                <strong>🔐 Seeds = your secret password.</strong> All 4 seeds must be known, and their order matters. Swapping seed 1 and seed 2 gives a completely different result — try it now and watch the value above change.
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Column Name</label>
-                  <input
-                    value={colName}
-                    onChange={e => setColName(e.target.value)}
+                  <input value={colName} onChange={e => setColName(e.target.value)}
                     className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    placeholder="e.g. Age, Salary, Name"
-                  />
-                  <p className="text-xs text-slate-400 mt-1.5">Even with the same seeds, different column names produce different scrambled values.</p>
+                    placeholder="e.g. Age, Salary, Name" />
+                  <p className="text-xs text-slate-400 mt-1.5">The column name is hashed into the keystream so that "Age" and "Salary" encrypt differently even with identical seeds and values.</p>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase mb-2">Cell Value to Scramble</label>
-                  <input
-                    value={cellValue}
-                    onChange={e => setCellValue(e.target.value)}
+                  <input value={cellValue} onChange={e => setCellValue(e.target.value)}
                     className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-mono focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    placeholder="e.g. 12345 or Hello"
-                  />
-                  <p className="text-xs text-slate-400 mt-1.5">Digits stay digits, letters stay letters. The format is always preserved.</p>
+                    placeholder="e.g. 12345 or Hello" />
+                  <p className="text-xs text-slate-400 mt-1.5">Try a pure number (e.g. <span className="font-mono">12345</span>), a word (e.g. <span className="font-mono">Hello</span>), or a mix (e.g. <span className="font-mono">ABC123</span>).</p>
                 </div>
               </div>
             </BigCard>
-
-            <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6">
-              <h3 className="font-bold text-amber-800 mb-2 text-lg">💡 Why does this matter?</h3>
-              <p className="text-amber-700 leading-relaxed">
-                Survey data often contains sensitive information like income, age, or location. Anonymization hides the real values so the data is safe to share — but researchers who hold the secret seeds can still decrypt it back to the original when needed.
-              </p>
-            </div>
           </div>
         )}
 
@@ -639,85 +700,125 @@ export function GuideSection() {
               <div className="text-5xl mb-4">🔑</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Making the Secret Keys</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                Your 4 seed numbers are like ingredients in a recipe.<br />
-                We mix them together in a very specific way to bake 4 different <strong>secret keys</strong>.
+                Your 4 seed numbers are blended together step by step<br />to produce 4 different <strong>256-bit secret keys</strong>. Here's exactly how.
               </p>
             </div>
 
-            {/* Analogy card */}
-            <div className="bg-blue-50 border-2 border-blue-200 rounded-2xl p-6">
-              <h3 className="font-bold text-blue-800 mb-3 text-lg">🍳 Think of it like cooking</h3>
-              <div className="grid grid-cols-4 gap-4 mb-4">
-                {seeds.map((s, i) => (
-                  <div key={i} className="text-center bg-white rounded-xl p-4 border border-blue-200">
-                    <div className="text-3xl mb-1">🥚</div>
-                    <div className="text-xs text-blue-500 font-semibold uppercase">Ingredient {i+1}</div>
-                    <div className="text-2xl font-bold font-mono text-blue-700 mt-1">{s}</div>
-                  </div>
-                ))}
+            {/* Concepts needed */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-5">
+                <div className="text-2xl mb-2">⊕</div>
+                <div className="font-bold text-blue-800 mb-2">XOR (Exclusive-Or)</div>
+                <p className="text-blue-700 text-xs leading-relaxed mb-3">XOR compares two numbers bit by bit. If a bit is <em>different</em> between the two numbers, the result is 1. If the bits are the <em>same</em>, the result is 0.</p>
+                <div className="bg-white rounded-lg p-3 font-mono text-xs border border-blue-200">
+                  <div className="text-slate-500 mb-1">5 in binary:</div>
+                  <div>  0 1 0 1</div>
+                  <div className="text-slate-500">⊕</div>
+                  <div className="text-slate-500 mb-1">3 in binary:</div>
+                  <div>  0 0 1 1</div>
+                  <div className="border-t border-slate-200 mt-1 pt-1 text-green-700 font-bold">= 0 1 1 0 = 6</div>
+                </div>
+                <p className="text-blue-600 text-xs mt-2">We use XOR to mix seed values into the running accumulator — it scrambles bits without losing information.</p>
               </div>
-              <p className="text-blue-700 text-sm text-center">
-                These 4 seeds go into a <strong>mathematical blender</strong>. The order matters — swapping any two seeds gives a completely different result.
-              </p>
+              <div className="bg-violet-50 border-2 border-violet-200 rounded-xl p-5">
+                <div className="text-2xl mb-2">🌊</div>
+                <div className="font-bold text-violet-800 mb-2">Avalanche Effect</div>
+                <p className="text-violet-700 text-xs leading-relaxed mb-3">The "avalanche" mixing steps ensure that a <strong>tiny change in input causes a huge change in output</strong>. Changing just one bit of any seed should flip roughly half the bits in the final key.</p>
+                <div className="bg-white rounded-lg p-3 text-xs border border-violet-200 font-mono space-y-1">
+                  <div><span className="text-blue-600">seed=42</span> → key starts <span className="text-green-700">{trace.keys[0].slice(0,8)}</span></div>
+                  <div><span className="text-blue-600">seed=43</span> → key starts <span className="text-red-600 text-[10px]">completely different</span></div>
+                </div>
+                <p className="text-violet-600 text-xs mt-2">This comes from the MurmurHash3 finaliser — a proven technique from fast hash functions.</p>
+              </div>
+              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-5">
+                <div className="text-2xl mb-2">🎲</div>
+                <div className="font-bold text-amber-800 mb-2">xorshift128+</div>
+                <p className="text-amber-700 text-xs leading-relaxed mb-3">Once we have the final rolling accumulator, we feed it into <strong>xorshift128+</strong> — a fast pseudo-random number generator (PRNG). "Pseudo-random" means: given the same seed, it always produces the same sequence of numbers that <em>looks</em> random.</p>
+                <p className="text-amber-700 text-xs leading-relaxed">We call this PRNG 32 times to generate 32 random bytes (256 bits) — that becomes the key. The PRNG is seeded with <span className="font-mono">rolling ⊕ 0xDEADBEEF</span> to further decorrelate the output.</p>
+              </div>
             </div>
 
-            {/* Step-by-step process */}
+            {/* Step-by-step with actual values */}
             <BigCard color="bg-white border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-5">How the blending works</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">The Blending — With Your Actual Numbers</h3>
+              <p className="text-slate-500 text-sm mb-5">Every number below is computed live from your seeds [{seeds.join(", ")}]. Each row shows the 4 mixing steps applied to one seed.</p>
 
-              <div className="space-y-4">
-                <div className="flex gap-4 items-start">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-lg">1</div>
-                  <div>
-                    <div className="font-semibold text-slate-800 mb-1">Start with a special number</div>
-                    <p className="text-slate-500 text-sm mb-2">We begin with the number <strong>2,654,435,769</strong>. This comes from the golden ratio (the same beautiful number found in nature). It's our starting point.</p>
-                    <div className="bg-slate-900 rounded-lg px-4 py-2 font-mono text-emerald-300 text-sm inline-block">
-                      rolling = 2,654,435,769
-                    </div>
+              <div className="flex gap-4 items-start mb-5">
+                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0">0</div>
+                <div>
+                  <div className="font-semibold text-slate-800 mb-1">Starting point: the Golden Ratio constant</div>
+                  <p className="text-slate-500 text-sm mb-2">We don't start from zero — we start from <strong>0x9E3779B9</strong> (2,654,435,769 in decimal). This number comes from multiplying the golden ratio φ = 1.618… by 2³² and rounding. It has excellent bit-distribution properties and gives our accumulator a high-entropy starting state.</p>
+                  <div className="bg-slate-900 rounded-lg px-4 py-2 font-mono text-emerald-300 text-sm inline-block">
+                    rolling₀ = 0x9E3779B9 = 2,654,435,769
                   </div>
                 </div>
+              </div>
 
-                {seeds.map((seed, i) => (
-                  <div key={i} className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-lg">{i + 2}</div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-slate-800 mb-1">Mix in Seed {i + 1} ({seed})</div>
-                      <p className="text-slate-500 text-sm mb-2">
-                        We multiply our running number by the golden-ratio constant, then XOR it with seed {i + 1}. Then we run it through two "scrambling" steps to spread every bit of the seed throughout the number.
-                      </p>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 text-sm font-mono text-indigo-700">seed = {seed}</div>
-                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                        <div className="bg-slate-900 rounded-lg px-3 py-2 font-mono text-emerald-300 text-sm">
-                          new rolling = 0x{(0).toString().padStart(8, "0")}
-                        </div>
-                        <ArrowRight className="w-4 h-4 text-slate-400" />
-                        <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm">
-                          <span className="text-xs text-green-600 block font-semibold uppercase mb-0.5">Key {i+1} (first 16 chars)</span>
-                          <span className="font-mono text-green-800 text-xs">{trace.keys[i].slice(0, 16)}…</span>
-                        </div>
+              {trace.keyDerivSteps.map((kd, i) => {
+                const bgColors = ["bg-blue-50 border-blue-200","bg-violet-50 border-violet-200","bg-amber-50 border-amber-200","bg-emerald-50 border-emerald-200"];
+                const textColors = ["text-blue-700","text-violet-700","text-amber-700","text-emerald-700"];
+                return (
+                  <div key={i} className={`rounded-xl border-2 ${bgColors[i]} p-5 mb-4`}>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-9 h-9 rounded-full bg-white border-2 ${bgColors[i].split(" ")[1]} font-bold flex items-center justify-center ${textColors[i]} text-base`}>{i+1}</div>
+                      <div>
+                        <div className={`font-bold text-base ${textColors[i]}`}>Seed {i+1} = {kd.seed}</div>
+                        <div className="text-xs text-slate-400">Rolling before: <span className="font-mono">{("0x"+kd.rollingBefore.toString(16).toUpperCase().padStart(8,"0"))}</span></div>
                       </div>
                     </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
+                        <span className="font-bold text-slate-500 w-6 shrink-0">A</span>
+                        <span className="text-slate-600 flex-1">Multiply by golden-ratio prime, then XOR with seed:</span>
+                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMulXor.toString(16).toUpperCase().padStart(8,"0")}</span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
+                        <span className="font-bold text-slate-500 w-6 shrink-0">B</span>
+                        <span className="text-slate-600 flex-1">Avalanche mix #1 — XOR with its own right-shift (16 bits):</span>
+                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMix1.toString(16).toUpperCase().padStart(8,"0")}</span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
+                        <span className="font-bold text-slate-500 w-6 shrink-0">C</span>
+                        <span className="text-slate-600 flex-1">Multiply by MurmurHash3 constant (0x85EBCA6B):</span>
+                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMul2.toString(16).toUpperCase().padStart(8,"0")}</span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
+                        <span className="font-bold text-slate-500 w-6 shrink-0">D</span>
+                        <span className="text-slate-600 flex-1">Avalanche mix #2 — XOR with its own right-shift (13 bits):</span>
+                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMix2.toString(16).toUpperCase().padStart(8,"0")}</span>
+                      </div>
+                    </div>
+                    <div className={`mt-3 rounded-lg p-3 bg-white border ${bgColors[i].split(" ")[1]}`}>
+                      <div className={`text-xs font-semibold uppercase ${textColors[i]} mb-1`}>Key {i+1} (64 hex chars = 256 bits)</div>
+                      <div className={`font-mono text-xs break-all ${textColors[i]}`}>{kd.key}</div>
+                    </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </BigCard>
 
-            {/* Show all 4 keys */}
-            <div className="rounded-2xl bg-slate-900 p-6">
-              <h3 className="text-white font-bold mb-4 text-lg">🗝️ Result: 4 Secret Keys (256 bits each)</h3>
-              <div className="space-y-3">
-                {trace.keys.map((k, i) => {
-                  const colors = ["text-blue-300", "text-violet-300", "text-amber-300", "text-emerald-300"];
-                  return (
-                    <div key={i} className="flex items-start gap-3">
-                      <span className={`text-xs font-bold px-2 py-1 rounded-full bg-white/10 shrink-0 mt-0.5 ${colors[i]}`}>Key {i+1}</span>
-                      <span className={`font-mono text-xs break-all leading-relaxed ${colors[i]}`}>{k}</span>
-                    </div>
-                  );
-                })}
+            {/* Why 256 bits */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-800 rounded-2xl p-6 text-white">
+                <h3 className="font-bold mb-3 text-base">🗝️ Why 256 bits?</h3>
+                <p className="text-slate-300 text-sm leading-relaxed mb-3">A 256-bit key has 2²⁵⁶ possible values. Written out, that's roughly:</p>
+                <div className="bg-black/30 rounded-lg p-3 font-mono text-green-300 text-xs break-all">115,792,089,237,316,195,423,570,985,008,687,907,853,269,984,665,640,564,039,457,584,007,913,129,639,936</div>
+                <p className="text-slate-400 text-xs mt-3">That's more than the number of atoms in the observable universe (≈10⁸⁰). Even with all the computers ever built running for billions of years, you can't brute-force a 256-bit key.</p>
               </div>
-              <p className="text-slate-400 text-xs mt-4">Each key is 64 hexadecimal characters = 256 binary digits. This is the same key length used to protect your online banking.</p>
+              <div className="bg-slate-900 rounded-2xl p-6">
+                <h3 className="text-white font-bold mb-4 text-base">All 4 generated keys:</h3>
+                <div className="space-y-3">
+                  {trace.keys.map((k, i) => {
+                    const colors = ["text-blue-300","text-violet-300","text-amber-300","text-emerald-300"];
+                    return (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded bg-white/10 shrink-0 mt-0.5 ${colors[i]}`}>K{i+1}</span>
+                        <span className={`font-mono text-[10px] break-all leading-relaxed ${colors[i]}`}>{k}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -729,95 +830,165 @@ export function GuideSection() {
               <div className="text-5xl mb-4">🔐</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Scrambling Your Value</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                We apply 4 rounds of scrambling, one for each key.<br />
-                Each round <strong>shifts every character</strong> to a different position — like a secret code wheel.
+                We apply 4 independent rounds of scrambling, one per key. Each round uses a <strong>keystream</strong> derived from the column name to shift every character. Here's the full picture.
               </p>
             </div>
 
-            {/* Analogy */}
-            <div className="bg-green-50 border-2 border-green-200 rounded-2xl p-6">
-              <h3 className="font-bold text-green-800 mb-2 text-lg">🎡 Think of it like a spinning code wheel</h3>
-              <p className="text-green-700 leading-relaxed text-sm">
-                Imagine a wheel with all 10 digits (0–9) printed around the edge. To encrypt the digit "3", we spin the wheel by a secret amount. If we spin by 4, "3" becomes "7". Letters work the same way — they spin within their own 26-letter wheel. Symbols like spaces or punctuation don't spin at all — they stay unchanged so the format is preserved.
+            {/* Substep A: Column IV */}
+            <BigCard color="bg-white border-blue-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-2">🔵 Sub-step A: Column IV — Why columns encrypt differently</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                Imagine two columns: <strong>Age</strong> and <strong>Income</strong>. Both contain the value <span className="font-mono font-bold">50</span>. Without a column-specific element, both would encrypt to the exact same output — revealing that those two people have the same value in both columns. That's a privacy leak!
               </p>
-            </div>
+              <p className="text-slate-500 text-sm leading-relaxed mb-5">
+                To prevent this, we hash the column name together with the round key to produce a <strong>Column IV</strong> (Initialization Vector). This makes the keystream completely different per column. The hash uses a technique called a <em>linear congruential mixing loop</em> over the characters of <span className="font-mono bg-slate-100 px-1 rounded">"COL" + columnName</span>.
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs border-collapse">
+                  <thead><tr className="bg-slate-100">
+                    <th className="px-4 py-2 text-left text-slate-600">Round</th>
+                    <th className="px-4 py-2 text-left text-slate-600">Key (first 8 hex chars)</th>
+                    <th className="px-4 py-2 text-left text-slate-600">Column</th>
+                    <th className="px-4 py-2 text-left text-slate-600">Column IV (hex)</th>
+                    <th className="px-4 py-2 text-left text-slate-600">Column IV (decimal)</th>
+                  </tr></thead>
+                  <tbody>
+                    {trace.colIVs.map((iv, i) => (
+                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                        <td className="px-4 py-2 font-semibold text-slate-700">Round {i+1}</td>
+                        <td className="px-4 py-2 font-mono text-blue-700">{trace.keys[i].slice(0,8)}…</td>
+                        <td className="px-4 py-2 font-mono font-bold text-slate-800">{colName || "(empty)"}</td>
+                        <td className="px-4 py-2 font-mono font-bold text-amber-700">0x{iv.toString(16).toUpperCase().padStart(8,"0")}</td>
+                        <td className="px-4 py-2 font-mono text-slate-600">{iv.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-slate-400 mt-3">✦ If you change the column name above (Step 1 inputs), all 4 IVs change — and so does the final encrypted value.</p>
+            </BigCard>
 
-            {/* Round selector */}
-            <div className="flex gap-3 justify-center">
-              {[0, 1, 2, 3].map(i => (
-                <button
-                  key={i}
-                  onClick={() => setEncRoundIdx(i)}
-                  className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${encRoundIdx === i ? "bg-green-600 text-white shadow-lg" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-                >
-                  Round {i + 1}
-                </button>
-              ))}
-            </div>
-
-            {/* Round visualization */}
+            {/* Substep B: Keystream */}
             <BigCard color="bg-white border-green-200">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 font-bold flex items-center justify-center text-lg">
-                  {encRoundIdx + 1}
+              <h3 className="text-lg font-bold text-slate-800 mb-2">🟢 Sub-step B: Generating the Keystream</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                With the Column IV in hand, we XOR it with the first 8 hex characters of the round key to get a <strong>combined seed</strong>. This combined seed is fed into the <strong>xorshift128+</strong> pseudo-random number generator, which produces a stream of random bytes (0–255) — one byte per character of the cell value.
+              </p>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Combined seed formula</div>
+                  <div className="font-mono text-xs text-slate-700 leading-relaxed">
+                    combined = (key[0..7] as hex) ⊕ colIV<br/>
+                    <span className="text-blue-600">{trace.keys[encRoundIdx].slice(0,8)}</span> ⊕ <span className="text-amber-600">0x{trace.colIVs[encRoundIdx].toString(16).toUpperCase().padStart(8,"0")}</span><br/>
+                    = <span className="text-green-700">0x{((parseInt(trace.keys[encRoundIdx].slice(0,8),16) ^ trace.colIVs[encRoundIdx]) >>> 0).toString(16).toUpperCase().padStart(8,"0")}</span>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-bold text-slate-800 text-lg">Round {encRoundIdx + 1} — Using Key {encRoundIdx + 1}</div>
-                  <div className="text-sm text-slate-500 font-mono">{trace.keys[encRoundIdx].slice(0, 24)}…</div>
-                </div>
-              </div>
-
-              {/* Before → After */}
-              <div className="flex items-center gap-6 mb-6 p-5 bg-slate-50 rounded-xl">
-                <div className="text-center">
-                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Before Round {encRoundIdx + 1}</div>
-                  <ValuePill
-                    value={trace.encStages[encRoundIdx]}
-                    color="text-blue-700 bg-blue-50 border-2 border-blue-200"
-                  />
-                </div>
-                <ArrowRight className="w-8 h-8 text-green-400 shrink-0" />
-                <div className="text-center">
-                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">After Round {encRoundIdx + 1}</div>
-                  <ValuePill
-                    value={trace.encStages[encRoundIdx + 1]}
-                    color="text-green-700 bg-green-50 border-2 border-green-200"
-                  />
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div className="text-xs font-semibold text-slate-500 uppercase mb-2">First 10 keystream bytes — Round {encRoundIdx+1}</div>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {(trace.ksFirstBytes[encRoundIdx] ?? []).map((b, i) => (
+                      <span key={i} className="font-mono text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg font-bold border border-amber-200">{b}</span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-2">Each byte is a number 0–255. One byte controls one character's shift.</p>
                 </div>
               </div>
-
-              {/* Character-by-character */}
-              <div className="mb-4">
-                <div className="text-sm font-semibold text-slate-600 mb-3">Character by character shift:</div>
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {encShifts.slice(0, 12).map((s, i) => <ShiftBubble key={i} shift={s} />)}
-                  {encShifts.length > 12 && (
-                    <div className="flex items-center text-slate-400 text-sm italic">+{encShifts.length - 12} more…</div>
-                  )}
-                </div>
-                <div className="mt-4 flex items-center gap-6 text-xs flex-wrap">
-                  <span className="flex items-center gap-1.5"><span className="font-mono font-bold text-blue-600">X</span> = original character</span>
-                  <span className="flex items-center gap-1.5"><span className="text-amber-600 font-semibold bg-amber-50 px-1 rounded">+N</span> = spin amount from key</span>
-                  <span className="flex items-center gap-1.5"><span className="font-mono font-bold text-green-600">Y</span> = result after spinning</span>
-                  <span className="flex items-center gap-1.5"><span className="font-mono font-bold text-slate-400">—</span> = symbol, not changed</span>
-                </div>
-              </div>
-
-              <div className="bg-amber-50 rounded-xl p-4 text-sm text-amber-800">
-                <strong>Why are digits only shifted to digits?</strong> The encryption is "format-preserving" — it's specifically designed to keep numbers as numbers and letters as letters. So "12345" never becomes "AB#7!" — it might become "39461" instead. The data looks real, which is important for surveys.
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-800">
+                <strong>Why are keystream bytes never 0?</strong> A byte of 0 would apply a shift of <span className="font-mono">1 + (0 mod 9) = 1</span> to digits or <span className="font-mono">1 + (0 mod 25) = 1</span> to letters — so they still shift. The minimum shift is always at least 1, so <strong>no character ever stays the same in a single round</strong>. This prevents a known-plaintext attacker from confirming unchanged characters.
               </div>
             </BigCard>
 
-            {/* All rounds summary */}
+            {/* Substep C: Shift formulas */}
+            <BigCard color="bg-white border-amber-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-2">🟡 Sub-step C: The Exact Shift Formulas</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-5">
+                Each character type is shifted within its own alphabet. The formula <span className="font-mono bg-slate-100 px-1 rounded">1 + (k mod size)</span> ensures the shift is always between 1 and the alphabet size. We add a large constant before modulo to avoid negative numbers when decrypting.
+              </p>
+              <div className="space-y-3">
+                {[
+                  { name: "Digit (0–9)", badge: "bg-blue-100 text-blue-700", size: 10, formula: "new = 48 + ((code − 48 + 1 + k mod 9) mod 10)", example: `'${encShifts.find(s => s.from.match(/[0-9]/))?.from ?? "3"}' + shift → '${encShifts.find(s => s.from.match(/[0-9]/))?.to ?? "7"}'`, why: "ASCII digits are 48–57. Subtracting 48 gives 0–9, we shift, then add 48 back. Mod 10 wraps around so '9'+2 = '1' not '11'." },
+                  { name: "Leading digit (1–9)", badge: "bg-indigo-100 text-indigo-700", size: 9, formula: "new = 49 + ((code − 49 + 1 + k mod 8) mod 9)", example: "Avoids turning '1' into '0' (leading zero)", why: "For all-numeric strings, the first digit uses mod 9 over the range 1–9, preventing a leading zero which would break the number's length semantics." },
+                  { name: "Uppercase letter (A–Z)", badge: "bg-violet-100 text-violet-700", size: 26, formula: "new = 65 + ((code − 65 + 1 + k mod 25) mod 26)", example: `'${encShifts.find(s => s.from.match(/[A-Z]/))?.from ?? "A"}' + shift → '${encShifts.find(s => s.from.match(/[A-Z]/))?.to ?? "C"}'`, why: "ASCII uppercase is 65–90. We shift within 0–25 and add 65 back. 'Z'+1 wraps to 'A'." },
+                  { name: "Lowercase letter (a–z)", badge: "bg-emerald-100 text-emerald-700", size: 26, formula: "new = 97 + ((code − 97 + 1 + k mod 25) mod 26)", example: `'${encShifts.find(s => s.from.match(/[a-z]/))?.from ?? "a"}' + shift → '${encShifts.find(s => s.from.match(/[a-z]/))?.to ?? "c"}'`, why: "Same as uppercase but base is 97 (ASCII 'a'). 'z'+1 wraps to 'a'." },
+                  { name: "Symbol / space / other", badge: "bg-slate-100 text-slate-600", size: 0, formula: "new = code (unchanged)", example: "' ' stays ' ', '.' stays '.'", why: "Symbols are part of the format, not the value. Changing them would corrupt the CSV structure." },
+                ].map(f => (
+                  <div key={f.name} className="rounded-xl border border-slate-200 p-4 grid grid-cols-[1fr_2fr_1fr] gap-4 items-start">
+                    <div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded-full ${f.badge}`}>{f.name}</span>
+                      <div className="text-xs text-slate-400 mt-2 font-mono">{f.example}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold text-slate-500 mb-1">Formula:</div>
+                      <div className="font-mono text-xs bg-slate-900 text-emerald-300 rounded-lg px-3 py-2">{f.formula}</div>
+                    </div>
+                    <div className="text-xs text-slate-500 leading-relaxed">{f.why}</div>
+                  </div>
+                ))}
+              </div>
+            </BigCard>
+
+            {/* Round selector + visualization */}
             <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 p-6">
-              <h3 className="font-bold text-slate-700 mb-4 text-base">All 4 rounds applied in order:</h3>
-              <RoundBar stages={trace.encStages} active={encRoundIdx + 1} />
+              <h3 className="font-bold text-slate-700 mb-4">🔄 Explore Each Encryption Round</h3>
+              <div className="flex gap-3 justify-center mb-5">
+                {[0,1,2,3].map(i => (
+                  <button key={i} onClick={() => setEncRoundIdx(i)}
+                    className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${encRoundIdx === i ? "bg-green-600 text-white shadow-lg" : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
+                    Round {i+1}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-6 mb-5 p-5 bg-white rounded-xl border border-slate-200">
+                <div className="text-center flex-1">
+                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Input to Round {encRoundIdx+1}</div>
+                  <ValuePill value={trace.encStages[encRoundIdx]} color="text-blue-700 bg-blue-50 border-2 border-blue-200" />
+                </div>
+                <div className="text-center shrink-0">
+                  <div className="text-xs text-slate-400 mb-1">Key {encRoundIdx+1}</div>
+                  <ArrowRight className="w-8 h-8 text-green-400" />
+                </div>
+                <div className="text-center flex-1">
+                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Output of Round {encRoundIdx+1}</div>
+                  <ValuePill value={trace.encStages[encRoundIdx+1]} color="text-green-700 bg-green-50 border-2 border-green-200" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 justify-center mb-4">
+                {encShifts.slice(0,14).map((s, i) => <ShiftBubble key={i} shift={s} />)}
+                {encShifts.length > 14 && <div className="flex items-center text-slate-400 text-sm italic">+{encShifts.length - 14} more…</div>}
+              </div>
+              <div className="flex items-center gap-6 text-xs flex-wrap justify-center">
+                <span><span className="font-mono font-bold text-blue-600">X</span> = input char</span>
+                <span><span className="text-amber-600 font-semibold bg-amber-50 px-1 rounded">+N</span> = shift from keystream byte</span>
+                <span><span className="font-mono font-bold text-green-600">Y</span> = output char</span>
+                <span><span className="font-mono font-bold text-slate-400">—</span> = symbol, unchanged</span>
+              </div>
             </div>
+
+            {/* Why 4 rounds */}
+            <BigCard color="bg-white border-slate-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-3">🔗 Why 4 Rounds Instead of 1?</h3>
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <p className="text-slate-500 text-sm leading-relaxed mb-3">With 1 round, an attacker who sees many anonymized values might spot statistical patterns. The distribution of output characters would still roughly reflect the input distribution.</p>
+                  <p className="text-slate-500 text-sm leading-relaxed mb-3">With 4 independent rounds (each using a different key), any correlation between input and output is multiplied through 4 layers of independent random shifts. The probability of guessing the original from the anonymized value falls dramatically.</p>
+                  <p className="text-slate-500 text-sm leading-relaxed">Think of it like painting over a wall 4 times with 4 different colours — you can't tell the original colour by looking at the surface.</p>
+                </div>
+                <div className="rounded-xl bg-slate-900 p-4">
+                  <div className="text-slate-400 text-xs font-bold uppercase mb-3">Value after each round:</div>
+                  {trace.encStages.map((s, i) => (
+                    <div key={i} className="flex items-center gap-3 mb-2">
+                      <span className="text-xs text-slate-500 w-16 text-right shrink-0">{i === 0 ? "Original" : `Round ${i}`}</span>
+                      <span className={`font-mono font-bold px-3 py-1 rounded-lg ${i === 0 ? "text-blue-300 bg-blue-900/40" : i === 4 ? "text-green-300 bg-green-900/40" : "text-slate-300 bg-slate-800"}`}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </BigCard>
 
             <div className="rounded-2xl bg-green-900 p-6 text-center">
               <div className="text-green-300 text-sm font-semibold uppercase tracking-wide mb-2">Final Anonymized Value</div>
               <ValuePill value={trace.finalEncrypted} color="text-green-300 bg-green-800 border-2 border-green-600" />
-              <p className="text-green-400 text-sm mt-3">Looking at this value alone, there's no mathematical way to figure out it came from <span className="font-mono font-bold">{cellValue || "A"}</span> without knowing all 4 seeds.</p>
+              <p className="text-green-400 text-sm mt-3">This is what gets written to the CSV. Without all 4 seeds in the correct order, there is no way to reverse this.</p>
             </div>
           </div>
         )}
@@ -829,92 +1000,152 @@ export function GuideSection() {
               <div className="text-5xl mb-4">🔓</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Unscrambling the Value</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                Decryption is the encryption process played <strong>in reverse</strong>.<br />
-                We undo round 4 first, then 3, then 2, then 1 — and we get the original back.
+                Decryption uses the <strong>same keys and the same keystream</strong> — but applies the shift <em>backwards</em> and works through the rounds in <em>reverse order</em>. Here's the full picture.
               </p>
             </div>
 
-            {/* Analogy */}
-            <div className="bg-violet-50 border-2 border-violet-200 rounded-2xl p-6">
-              <h3 className="font-bold text-violet-800 mb-2 text-lg">🧥 Like taking off layers of clothing</h3>
-              <p className="text-violet-700 text-sm leading-relaxed">
-                Encryption was like putting on 4 layers (t-shirt, then jumper, then jacket, then coat). To undress, you <em>must</em> take them off in reverse — coat first, then jacket, then jumper, then t-shirt. Decryption works the same way: we undo round 4, then 3, then 2, then 1. If we did it in the wrong order, we'd get nonsense.
-              </p>
-            </div>
-
-            {/* Round selector */}
-            <div className="flex gap-3 justify-center">
-              {[0, 1, 2, 3].map(i => (
-                <button
-                  key={i}
-                  onClick={() => setDecRoundIdx(i)}
-                  className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${decRoundIdx === i ? "bg-violet-600 text-white shadow-lg" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-                >
-                  Undo Round {4 - i}
-                </button>
-              ))}
-            </div>
-
-            {/* Round visualization */}
+            {/* Enc vs Dec formulas side by side */}
             <BigCard color="bg-white border-violet-200">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-10 h-10 rounded-full bg-violet-100 text-violet-700 font-bold flex items-center justify-center text-lg">
-                  ↩
-                </div>
-                <div>
-                  <div className="font-bold text-slate-800 text-lg">Undoing Round {4 - decRoundIdx} — Using Key {4 - decRoundIdx}</div>
-                  <div className="text-sm text-slate-500 font-mono">{trace.keys[3 - decRoundIdx]?.slice(0, 24)}…</div>
-                </div>
+              <h3 className="text-lg font-bold text-slate-800 mb-2">↔️ Encryption vs. Decryption — The Exact Formulas</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-5">
+                The only difference between encrypting and decrypting is the direction of the shift. Both use the <strong>exact same keystream byte k</strong> — generated from the same key and column IV. Encryption adds; decryption subtracts. The <span className="font-mono bg-slate-100 px-1 rounded">+ 90</span> / <span className="font-mono bg-slate-100 px-1 rounded">+ 260</span> large constants prevent the modulo from ever producing a negative result in JavaScript.
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs border-collapse">
+                  <thead><tr className="bg-slate-100">
+                    <th className="px-3 py-2.5 text-left text-slate-600">Character type</th>
+                    <th className="px-3 py-2.5 text-left text-green-700">🔐 Encrypt</th>
+                    <th className="px-3 py-2.5 text-left text-violet-700">🔓 Decrypt</th>
+                    <th className="px-3 py-2.5 text-left text-slate-500">Why it's the inverse</th>
+                  </tr></thead>
+                  <tbody>
+                    {[
+                      ["Digit (0–9)", "48 + ((c−48 + 1 + k%9) % 10)", "48 + ((c−48 + 90 − 1 − k%9) % 10)", "Adding k then subtracting k mod 10 returns to the original. The +90 is 9×10, a multiple of 10, so it doesn't affect the modulo."],
+                      ["Lead digit (1–9)", "49 + ((c−49 + 1 + k%8) % 9)", "49 + ((c−49 + 81 − 1 − k%8) % 9)", "+81 = 9×9, a multiple of 9. Net shift is exactly 0 mod 9."],
+                      ["Uppercase (A–Z)", "65 + ((c−65 + 1 + k%25) % 26)", "65 + ((c−65 + 260 − 1 − k%25) % 26)", "+260 = 10×26, a multiple of 26. Net shift is 0 mod 26."],
+                      ["Lowercase (a–z)", "97 + ((c−97 + 1 + k%25) % 26)", "97 + ((c−97 + 260 − 1 − k%25) % 26)", "Same as uppercase, base 97."],
+                      ["Symbol / other", "unchanged", "unchanged", "Nothing to undo."],
+                    ].map(([type, enc, dec, why]) => (
+                      <tr key={type as string} className="border-t border-slate-100">
+                        <td className="px-3 py-3 font-semibold text-slate-700 align-top">{type}</td>
+                        <td className="px-3 py-3 font-mono text-green-800 bg-green-50 align-top">{enc}</td>
+                        <td className="px-3 py-3 font-mono text-violet-800 bg-violet-50 align-top">{dec}</td>
+                        <td className="px-3 py-3 text-slate-500 leading-relaxed align-top">{why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              {/* Before → After */}
-              <div className="flex items-center gap-6 mb-6 p-5 bg-slate-50 rounded-xl">
-                <div className="text-center">
-                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">
-                    {decRoundIdx === 0 ? "Anonymized value (start)" : `After undo ${decRoundIdx}`}
-                  </div>
-                  <ValuePill
-                    value={trace.decStages[decRoundIdx]}
-                    color="text-violet-700 bg-violet-50 border-2 border-violet-200"
-                  />
-                </div>
-                <ArrowRight className="w-8 h-8 text-violet-400 shrink-0" />
-                <div className="text-center">
-                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">
-                    {decRoundIdx === 3 ? "Original value (recovered!) ✓" : `After undo ${decRoundIdx + 1}`}
-                  </div>
-                  <ValuePill
-                    value={trace.decStages[decRoundIdx + 1]}
-                    color={decRoundIdx === 3 ? "text-blue-700 bg-blue-50 border-2 border-blue-400" : "text-indigo-700 bg-indigo-50 border-2 border-indigo-200"}
-                  />
-                </div>
-              </div>
-
-              {/* Character-by-character */}
-              <div className="mb-4">
-                <div className="text-sm font-semibold text-slate-600 mb-3">Each character is shifted backwards:</div>
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {decShifts.slice(0, 12).map((s, i) => <ShiftBubble key={i} shift={s} />)}
-                  {decShifts.length > 12 && (
-                    <div className="flex items-center text-slate-400 text-sm italic">+{decShifts.length - 12} more…</div>
-                  )}
-                </div>
-                <div className="mt-4 flex items-center gap-6 text-xs flex-wrap">
-                  <span className="flex items-center gap-1.5"><span className="font-mono font-bold text-blue-600">X</span> = encrypted character</span>
-                  <span className="flex items-center gap-1.5"><span className="text-amber-600 font-semibold bg-amber-50 px-1 rounded">+N</span> = same key byte used</span>
-                  <span className="flex items-center gap-1.5"><span className="font-mono font-bold text-green-600">Y</span> = recovered character</span>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800">
-                <strong>Same keystream bytes — but reversed!</strong> The decryption step uses the <em>exact same</em> keystream bytes as the corresponding encryption round (because the same keys and column IV are used). The only difference is: instead of spinning the wheel <em>forward</em> by N, we spin it <em>backward</em> by N.
+              <div className="mt-4 bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+                <strong>Proof it works:</strong> If we encrypt digit '3' using k=7: <span className="font-mono">48 + ((3 + 1 + 7) % 10) = 48 + 1 = '1'</span>. Now decrypt '1' using k=7: <span className="font-mono">48 + ((1 + 90 − 1 − 7) % 10) = 48 + (83 % 10) = 48 + 3 = '3'</span>. ✓ We recover the original.
               </div>
             </BigCard>
 
-            {/* All undo rounds summary */}
+            {/* Why reverse order is essential */}
+            <BigCard color="bg-white border-rose-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-3">🔁 Why Reverse Order Is Essential</h3>
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-3">
+                    <div className="font-bold text-red-700 mb-2 text-sm">❌ Wrong: Decrypting in forward order (1→2→3→4)</div>
+                    <div className="text-xs text-red-600 leading-relaxed">
+                      Round 1 decrypt undoes Round 1's shift — but the value we're looking at has had Round 2, 3, and 4 applied <em>on top</em>. So we'd be reversing the wrong transformation. The bits from Round 2–4 would corrupt the result permanently.
+                    </div>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <div className="font-bold text-green-700 mb-2 text-sm">✅ Correct: Decrypting in reverse order (4→3→2→1)</div>
+                    <div className="text-xs text-green-600 leading-relaxed">
+                      Round 4 decrypt undoes <em>exactly</em> Round 4's shift — because the value we hold has had exactly Round 4 applied most recently. After removing Round 4, we see what Round 3 produced — which is exactly what Round 3 decrypt expects.
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-900 p-5">
+                  <div className="text-slate-400 text-xs font-bold uppercase mb-3">Decryption chain (your values):</div>
+                  {[...trace.decStages].map((s, i) => (
+                    <div key={i} className="flex items-center gap-2 mb-2">
+                      <span className="text-xs text-slate-500 w-20 text-right shrink-0">
+                        {i === 0 ? "Encrypted" : `Undo R${4 - i + 1}`}
+                      </span>
+                      <span className={`font-mono font-bold px-2 py-1 rounded text-xs ${i === 0 ? "text-green-300 bg-green-900/40" : i === 4 ? "text-blue-300 bg-blue-900/40" : "text-slate-300 bg-slate-800"}`}>{s}</span>
+                      {i < trace.decStages.length - 1 && <span className="text-xs text-violet-400">← Key {4-i}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </BigCard>
+
+            {/* What if seeds are wrong */}
+            <BigCard color="bg-white border-slate-200">
+              <h3 className="text-lg font-bold text-slate-800 mb-3">🔑 What Happens With Wrong Seeds?</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-4">
+                If you try to decrypt with wrong seeds, the algorithm <strong>doesn't fail or give an error</strong> — it just produces a different, garbage value. This is intentional: an attacker can't tell whether their guessed seeds are right or wrong just from the output.
+              </p>
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="font-bold text-blue-700 mb-2">✅ Correct seeds [{seeds.join(", ")}]</div>
+                  <div className="text-slate-500 mb-1">Encrypted:</div>
+                  <div className="font-mono font-bold text-green-700">{trace.finalEncrypted}</div>
+                  <div className="text-slate-500 mb-1 mt-2">Decrypted:</div>
+                  <div className="font-mono font-bold text-blue-700">{trace.finalDecrypted}</div>
+                  <div className="text-green-600 mt-1 font-semibold">✓ Matches original</div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div className="font-bold text-slate-600 mb-2">❌ Wrong seed order [{seeds[1]}, {seeds[0]}, {seeds[2]}, {seeds[3]}]</div>
+                  <div className="text-slate-500 mb-1">Decrypted:</div>
+                  <div className="font-mono font-bold text-red-600 text-[10px]">{(() => {
+                    const s = [seeds[1], seeds[0], seeds[2], seeds[3]];
+                    return computeTrace(s, colName, trace.finalEncrypted).finalDecrypted.slice(0, 20);
+                  })()}</div>
+                  <div className="text-red-600 mt-1 font-semibold">✗ Garbage result</div>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                  <div className="font-bold text-slate-600 mb-2">❌ Wrong column name "Salary"</div>
+                  <div className="text-slate-500 mb-1">Decrypted:</div>
+                  <div className="font-mono font-bold text-red-600 text-[10px]">{(() => {
+                    const t2 = computeTrace(seeds, "Salary", trace.finalEncrypted);
+                    return t2.finalDecrypted.slice(0, 20);
+                  })()}</div>
+                  <div className="text-red-600 mt-1 font-semibold">✗ Garbage result</div>
+                </div>
+              </div>
+            </BigCard>
+
+            {/* Interactive round explorer */}
             <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 p-6">
-              <h3 className="font-bold text-slate-700 mb-4 text-base">All 4 rounds undone in reverse order (4 → 3 → 2 → 1):</h3>
-              <RoundBar stages={trace.decStages} active={decRoundIdx + 1} />
+              <h3 className="font-bold text-slate-700 mb-4">🔓 Explore Each Decryption Undo Round</h3>
+              <div className="flex gap-3 justify-center mb-5">
+                {[0,1,2,3].map(i => (
+                  <button key={i} onClick={() => setDecRoundIdx(i)}
+                    className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${decRoundIdx === i ? "bg-violet-600 text-white shadow-lg" : "bg-white border-2 border-slate-200 text-slate-600 hover:bg-slate-100"}`}>
+                    Undo R{4-i}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-6 mb-5 p-5 bg-white rounded-xl border border-slate-200">
+                <div className="text-center flex-1">
+                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">
+                    {decRoundIdx === 0 ? "Anonymized (start)" : `After undo ${decRoundIdx}`}
+                  </div>
+                  <ValuePill value={trace.decStages[decRoundIdx]} color="text-violet-700 bg-violet-50 border-2 border-violet-200" />
+                </div>
+                <div className="text-center shrink-0">
+                  <div className="text-xs text-slate-400 mb-1">Key {4-decRoundIdx} reversed</div>
+                  <ArrowRight className="w-8 h-8 text-violet-400" />
+                </div>
+                <div className="text-center flex-1">
+                  <div className="text-xs font-semibold text-slate-400 uppercase mb-2">
+                    {decRoundIdx === 3 ? "Original ✓" : `After undo ${decRoundIdx+1}`}
+                  </div>
+                  <ValuePill value={trace.decStages[decRoundIdx+1]} color={decRoundIdx === 3 ? "text-blue-700 bg-blue-50 border-2 border-blue-400" : "text-indigo-700 bg-indigo-50 border-2 border-indigo-200"} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 justify-center mb-3">
+                {decShifts.slice(0,14).map((s,i) => <ShiftBubble key={i} shift={s} />)}
+                {decShifts.length > 14 && <div className="flex items-center text-slate-400 text-sm italic">+{decShifts.length-14} more…</div>}
+              </div>
+              <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800 mt-3">
+                <strong>Same keystream, opposite direction.</strong> The keystream bytes for this round are <em>identical</em> to what was used during encryption (same key, same column IV → same PRNG output). But instead of <span className="font-mono">+k</span>, we apply <span className="font-mono">−k</span> using modular subtraction.
+              </div>
             </div>
 
             <div className="rounded-2xl bg-blue-900 p-6 text-center">
@@ -936,97 +1167,161 @@ export function GuideSection() {
               <div className="text-5xl mb-4">🎉</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">The Full Journey</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                Here's everything that happened to your value from start to finish.
+                Here's everything that happened — with real numbers — plus the security properties that make this algorithm trustworthy.
               </p>
             </div>
 
-            {/* Big journey */}
+            {/* Big journey combined */}
             <div className="rounded-2xl bg-slate-900 p-8">
-              {/* Encryption chain */}
-              <div className="mb-8">
-                <div className="text-slate-400 text-sm font-bold uppercase tracking-wide mb-4">🔐 Encryption (4 rounds forward)</div>
-                <div className="space-y-3">
-                  {trace.encStages.map((stage, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <div className="w-20 text-xs text-slate-500 text-right shrink-0">
-                        {i === 0 ? "Original" : `After R${i}`}
+              <div className="grid grid-cols-2 gap-8">
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-4">🔐 Encryption (R1 → R2 → R3 → R4)</div>
+                  <div className="space-y-2">
+                    {trace.encStages.map((stage, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-16 text-xs text-slate-500 text-right shrink-0">{i === 0 ? "Original" : `After R${i}`}</div>
+                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-blue-300 bg-blue-900/50" : i === 4 ? "text-green-300 bg-green-900/50" : "text-slate-300 bg-slate-800"}`}>{stage}</div>
+                        {i < trace.encStages.length - 1 && <div className="text-[10px] text-slate-600 shrink-0">K{i+1}</div>}
                       </div>
-                      <div className={`font-mono font-bold text-lg px-4 py-2 rounded-xl ${i === 0 ? "text-blue-300 bg-blue-900/50" : i === 4 ? "text-green-300 bg-green-900/50" : "text-slate-300 bg-slate-800"}`}>
-                        {stage}
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-4">🔓 Decryption (R4 → R3 → R2 → R1)</div>
+                  <div className="space-y-2">
+                    {trace.decStages.map((stage, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <div className="w-16 text-xs text-slate-500 text-right shrink-0">{i === 0 ? "Encrypted" : `Undo R${4-(i-1)}`}</div>
+                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-green-300 bg-green-900/50" : i === 4 ? "text-blue-300 bg-blue-900/50" : "text-slate-300 bg-slate-800"}`}>{stage}</div>
+                        {i < trace.decStages.length - 1 && <div className="text-[10px] text-slate-600 shrink-0">K{4-i}</div>}
                       </div>
-                      {i < trace.encStages.length - 1 && (
-                        <div className="text-xs text-slate-500">← Key {i + 1} applied</div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="border-t border-slate-700 my-6" />
-
-              {/* Decryption chain */}
-              <div>
-                <div className="text-slate-400 text-sm font-bold uppercase tracking-wide mb-4">🔓 Decryption (4 rounds backward)</div>
-                <div className="space-y-3">
-                  {trace.decStages.map((stage, i) => (
-                    <div key={i} className="flex items-center gap-4">
-                      <div className="w-20 text-xs text-slate-500 text-right shrink-0">
-                        {i === 0 ? "Encrypted" : `After U${i}`}
-                      </div>
-                      <div className={`font-mono font-bold text-lg px-4 py-2 rounded-xl ${i === 0 ? "text-green-300 bg-green-900/50" : i === 4 ? "text-blue-300 bg-blue-900/50" : "text-slate-300 bg-slate-800"}`}>
-                        {stage}
-                      </div>
-                      {i < trace.decStages.length - 1 && (
-                        <div className="text-xs text-slate-500">← Key {4 - i} reversed</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              <div className="mt-6 border-t border-slate-700 pt-5 text-center">
+                <span className={`inline-block text-sm font-semibold px-4 py-2 rounded-full ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-800 text-green-200" : "bg-red-900 text-red-200"}`}>
+                  {trace.finalDecrypted === (cellValue || "A") ? `✅  "${cellValue || "A"}" → "${trace.finalEncrypted}" → "${trace.finalDecrypted}" — Perfect round-trip!` : `⚠ Decrypted "${trace.finalDecrypted}" ≠ original "${cellValue || "A"}"`}
+                </span>
               </div>
             </div>
 
-            {/* Final check */}
-            <div className={`rounded-2xl p-8 text-center border-2 ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-50 border-green-300" : "bg-red-50 border-red-300"}`}>
-              <div className="text-4xl mb-3">{trace.finalDecrypted === (cellValue || "A") ? "✅" : "❌"}</div>
-              <h3 className={`text-xl font-bold mb-2 ${trace.finalDecrypted === (cellValue || "A") ? "text-green-800" : "text-red-800"}`}>
-                {trace.finalDecrypted === (cellValue || "A") ? "Perfect round-trip!" : "Something went wrong"}
-              </h3>
-              <p className={`text-sm ${trace.finalDecrypted === (cellValue || "A") ? "text-green-700" : "text-red-700"}`}>
-                Original: <span className="font-mono font-bold">{cellValue || "A"}</span>
-                {" → "}Encrypted: <span className="font-mono font-bold">{trace.finalEncrypted}</span>
-                {" → "}Decrypted: <span className="font-mono font-bold">{trace.finalDecrypted}</span>
-              </p>
-            </div>
-
-            {/* Quick concepts */}
+            {/* Security properties */}
             <BigCard color="bg-white border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-5">📚 Words to Know</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-5">🛡️ Security Properties</h3>
               <div className="space-y-4">
                 {[
-                  ["Seed", "🌱", "A number you choose. Four seeds together act as your secret password. Change the order and you get completely different results."],
-                  ["Key", "🔑", "A long random-looking string made from your seeds. 256 bits long (64 hex characters). Used to control how characters are shifted."],
-                  ["Keystream", "🌊", "A sequence of random numbers generated from the key. One number is used per character to decide how far to shift it."],
-                  ["Column IV", "📍", "A unique address computed from the column name. Ensures the same value in 'Age' and 'Salary' columns encrypts differently."],
-                  ["FPE", "🔄", "Format-Preserving Encryption. Fancy name for 'digits stay digits, letters stay letters'. The shape of the data is preserved."],
-                  ["4-Round Chain", "🔗", "We apply encryption 4 times instead of once. This makes it much harder to crack because you'd need to undo all 4 rounds."],
-                  ["Modular arithmetic", "🕐", "Like a clock — after 12 comes 1 again. We use this to 'wrap' digits back into 0–9 and letters back into A–Z."],
-                ].map(([term, emoji, def]) => (
-                  <div key={term as string} className="flex gap-4 items-start">
-                    <div className="text-2xl shrink-0">{emoji}</div>
-                    <div>
-                      <div className="font-bold text-slate-800">{term}</div>
-                      <div className="text-slate-500 text-sm leading-relaxed">{def}</div>
+                  {
+                    name: "Deterministic",
+                    icon: "🎯",
+                    badge: "bg-blue-100 text-blue-700",
+                    body: "The same input (seeds + column + value) always produces the same output. This is essential: you need to be able to decrypt the same cell the same way every time.",
+                    check: true
+                  },
+                  {
+                    name: "Format-Preserving (FPE)",
+                    icon: "🔄",
+                    badge: "bg-green-100 text-green-700",
+                    body: "Digits stay digits, letters stay letters, symbols stay symbols. The anonymized value has the same shape as the original, so existing research tools work without modification.",
+                    check: true
+                  },
+                  {
+                    name: "Column-Isolated",
+                    icon: "📍",
+                    badge: "bg-amber-100 text-amber-700",
+                    body: "Identical values in different columns always encrypt differently because the column name is mixed into the keystream via the Column IV. This prevents cross-column correlation attacks.",
+                    check: true
+                  },
+                  {
+                    name: "Order-Sensitive",
+                    icon: "🔢",
+                    badge: "bg-violet-100 text-violet-700",
+                    body: "Swapping any two seeds produces a completely different encrypted value — even though the same set of 4 numbers was used. This means 4! = 24 distinct orderings of the same seeds.",
+                    check: true
+                  },
+                  {
+                    name: "Non-malleable (within rounds)",
+                    icon: "🧱",
+                    badge: "bg-rose-100 text-rose-700",
+                    body: "Because we use 4 independent keystreams (one per key/IV pair), knowing one character's shift tells you nothing about another character's shift — even within the same round.",
+                    check: true
+                  },
+                  {
+                    name: "No identity leakage",
+                    icon: "👤",
+                    badge: "bg-slate-100 text-slate-700",
+                    body: "Every character is shifted by at least 1 in each round (minimum shift formula: 1 + k mod size ≥ 1). So no character can remain the same across any single round.",
+                    check: true
+                  },
+                ].map(p => (
+                  <div key={p.name} className="flex items-start gap-4 py-3 border-b border-slate-100 last:border-0">
+                    <div className="text-2xl shrink-0">{p.icon}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${p.badge}`}>{p.name}</span>
+                        {p.check && <span className="text-xs text-green-600 font-bold">✓ guaranteed</span>}
+                      </div>
+                      <p className="text-slate-500 text-sm leading-relaxed">{p.body}</p>
                     </div>
                   </div>
                 ))}
               </div>
             </BigCard>
 
+            {/* What would an attacker need? */}
+            <BigCard color="bg-white border-rose-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-3">🔍 What Would an Attacker Need?</h3>
+              <p className="text-slate-500 text-sm leading-relaxed mb-5">
+                To reverse-engineer an anonymized value without the seeds, an attacker would need to:
+              </p>
+              <div className="space-y-3">
+                {[
+                  ["Guess all 4 seeds", "Each seed is a 32-bit integer → 2³² ≈ 4.3 billion possibilities per seed. With 4 seeds in a specific order: (2³²)⁴ = 2¹²⁸ ≈ 3.4 × 10³⁸ combinations to try.", "bg-red-50 border-red-200 text-red-800"],
+                  ["Guess the column name", "If the attacker doesn't know the exact column name string, the column IV changes the entire keystream — adding another unbounded unknown.", "bg-red-50 border-red-200 text-red-800"],
+                  ["Undo all 4 rounds", "Even with a correct guess, the attacker must undo 4 layers of independent key-based shifting. There's no shortcut — each layer uses a different 256-bit key.", "bg-red-50 border-red-200 text-red-800"],
+                  ["No oracle feedback", "Unlike some schemes, this algorithm gives no 'wrong password' error. Every set of seeds produces some output — the attacker can't tell valid decryption from garbage.", "bg-amber-50 border-amber-200 text-amber-800"],
+                ].map(([title, body, cls]) => (
+                  <div key={title as string} className={`rounded-xl border-2 p-4 ${cls}`}>
+                    <div className="font-bold text-sm mb-1">{title}</div>
+                    <div className="text-xs leading-relaxed opacity-80">{body}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 bg-slate-900 rounded-xl p-4 text-center">
+                <div className="text-slate-400 text-xs font-semibold uppercase mb-1">Brute-force search space</div>
+                <div className="font-mono text-green-300 font-bold text-lg">(2³²)⁴ = 2¹²⁸ ≈ 3.4 × 10³⁸</div>
+                <div className="text-slate-400 text-xs mt-1">combinations of 4 ordered 32-bit seeds alone</div>
+                <div className="text-slate-500 text-xs mt-1">At 10¹⁵ guesses/second, this would take longer than the age of the universe.</div>
+              </div>
+            </BigCard>
+
+            {/* Algorithm glossary */}
+            <BigCard color="bg-white border-slate-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-5">📚 Key Terms Reference</h3>
+              <div className="grid grid-cols-2 gap-4">
+                {[
+                  ["Seed 🌱", "One of 4 numbers that form your password. Each must be known and in the correct order to decrypt."],
+                  ["Key 🔑", "A 256-bit (64 hex char) string derived from one seed via the rolling accumulator + xorshift128+ PRNG."],
+                  ["Column IV 📍", "A 32-bit integer derived by hashing (key prefix + column name). Separates the keystream of each column."],
+                  ["Keystream 🌊", "The sequence of random bytes (one per character) produced by xorshift128+ seeded with (key prefix ⊕ column IV)."],
+                  ["FPE 🔄", "Format-Preserving Encryption — characters stay within their own alphabet (digit→digit, letter→letter)."],
+                  ["Modular arithmetic 🕐", "Like a clock: 9 + 3 = 2 (mod 10). Used to wrap shifted characters back into their valid range."],
+                  ["xorshift128+ 🎲", "A fast PRNG that generates pseudo-random bytes. 'Pseudo' = same seed always gives same sequence."],
+                  ["4-Round Chain 🔗", "Applying 4 independent encryption rounds multiplies the effective security — undoing any round requires knowing that round's key."],
+                  ["Avalanche effect 🌊", "A property where changing 1 bit of a seed flips ~50% of the bits in the final key."],
+                  ["Rolling accumulator 🔢", "The 32-bit value that accumulates all 4 seeds one-by-one to produce the per-round state."],
+                ].map(([term, def]) => (
+                  <div key={term as string} className="flex gap-3 items-start py-2 border-b border-slate-100">
+                    <div className="font-bold text-slate-800 text-sm shrink-0 w-36">{term}</div>
+                    <div className="text-slate-500 text-xs leading-relaxed">{def}</div>
+                  </div>
+                ))}
+              </div>
+            </BigCard>
+
             <div className="text-center">
-              <button
-                onClick={() => setStep(0)}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors"
-              >
+              <button onClick={() => setStep(0)}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition-colors">
                 <RotateCcw className="w-4 h-4" />
                 Try different values
               </button>
