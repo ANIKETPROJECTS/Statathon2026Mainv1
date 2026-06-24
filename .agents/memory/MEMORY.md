@@ -1,0 +1,1 @@
+- [Artifact routing in Replit](artifact-routing.md) — the public preview needs the `artifacts/<name>: web` workflow running, not just "Start application".

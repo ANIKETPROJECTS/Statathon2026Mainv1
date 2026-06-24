@@ -1,0 +1,56 @@
+### Requirement: Comprehensive Anonymization and Decryption Guide
+
+We currently have a functionality where multiple seed values are processed in a predefined sequence to generate a Master Key. This Master Key is then used, along with the column value, to perform data anonymization.
+
+We would like to introduce a dedicated **Guide** section that provides a complete and detailed explanation of the entire process, from Master Key generation through anonymization and decryption.
+
+#### Guide Requirements
+
+1. **Interactive Example Inputs**
+
+   * Allow users to enter sample seed values.
+   * Allow users to enter a sample column value that will be anonymized.
+   * Use these exact values throughout the guide so that every calculation and transformation is demonstrated using the user-provided example.
+
+2. **Master Key Generation**
+
+   * Explain each step involved in generating the Master Key from the seed values.
+   * Display all intermediate calculations and transformations.
+   * Clearly document the sequence in which seed values are processed and explain why the order is important.
+   * Include all mathematical operations, algorithms, formulas, and intermediate results.
+
+3. **Anonymization Process**
+
+   * Starting with the user-provided sample column value, demonstrate the complete anonymization process step by step.
+   * Show every transformation applied to the data, including intermediate values and calculations.
+   * Explain how the Master Key is used during anonymization.
+   * Provide detailed descriptions of all algorithms, encoding methods, and mathematical operations involved.
+   * Display the final anonymized value and explain how it was derived.
+
+4. **Decryption Process**
+
+   * Create a separate section that explains how the anonymized value can be converted back to its original form.
+   * Use the same seed values, generated Master Key, original value, and anonymized value from the example.
+   * Demonstrate every step of the reverse process, including all intermediate calculations and transformations.
+   * Clearly show how the original value is reconstructed.
+
+5. **Detailed Educational Explanations**
+
+   * The guide should be written for users who may not have a technical, mathematical, or cryptographic background.
+   * Every mathematical concept, algorithm, formula, and technical term should be explained in simple, easy-to-understand language.
+   * Include definitions and explanations wherever necessary so that users can follow the process without prior knowledge of the underlying concepts.
+
+6. **Transparency and Traceability**
+
+   * Every stage of the process should display:
+
+     * Input values
+     * Applied operation
+     * Intermediate result
+     * Explanation of the operation
+     * Output value
+   * Users should be able to trace how the data changes from the initial seed values and original column value all the way to the final anonymized value and back to the original value during decryption.
+
+#### Expected Outcome
+
+The Guide should serve as a complete educational and technical reference that provides full transparency into the anonymization and decryption workflow. A user should be able to enter sample values and understand, step by step, exactly how the system generates the Master Key, anonymizes data, and reconstructs the original value, with all calculations, algorithms, and explanations presented in a clear and professional manner.
