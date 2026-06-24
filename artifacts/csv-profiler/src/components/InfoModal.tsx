@@ -89,17 +89,11 @@ b ← b ⊕ (b >>  8);   b = b >>> 0
 
 output = ((a + b) >>> 0) / 0x100000000   ∈ [0, 1)`}</Formula>
 
-      <H>Step 3 — 256-bit Key from Seed</H>
-      <P>A 32-byte (64 hex-char) AES-256 key is assembled by sampling 32 bytes from the PRNG after seeding with <Code>seed ⊕ 0xDEADBEEF</Code>:</P>
-      <Formula>{`keyPRNG_seed = (seed ⊕ 0xDEADBEEF) >>> 0
-key[i]      = ⌊ xorshift128+(keyPRNG_seed) × 256 ⌋   for i = 0..31
-keyHex      = key.map(b => b.toString(16).padStart(2,"0")).join("")`}</Formula>
-
-      <H>Step 4 — Rolling 4-Key Chain from Seeds s₁…s₄</H>
-      <P>A single rolling accumulator encodes the entire seed sequence. Swapping any two seeds alters the rolling value at that position <em>and every later position</em> — order is cryptographically significant:</P>
+      <H>Step 3 — Master Seed from all 4 Seeds</H>
+      <P>All four seeds are folded into the rolling accumulator <em>in sequence</em>. Only after all four have been mixed does the final accumulator value become the <strong>master seed</strong>. Swapping any two seeds changes the master seed — and therefore every round key:</P>
       <Formula>{`rolling₀ = 0x9E3779B9   [golden-ratio constant — initial state]
 
-For each round i ∈ {0, 1, 2, 3}  (seed sᵢ = s[i]):
+For each seed sᵢ in {s₁, s₂, s₃, s₄}:
 
   // Horner-style fold — multiply then XOR-mix with seed
   rolling ← (rolling × 0x9E3779B9) ⊕ (sᵢ >>> 0)   >>> 0
@@ -107,14 +101,27 @@ For each round i ∈ {0, 1, 2, 3}  (seed sᵢ = s[i]):
   rolling ← (rolling × 0x85EBCA6B)                  >>> 0
   rolling ← rolling ⊕ (rolling >>> 13)              >>> 0
 
-  keyChain[i] = generateKey(rolling)`}</Formula>
+masterSeed = rolling   [32-bit — encodes all 4 seeds and their order]`}</Formula>
+
+      <H>Step 4 — Master Key Expansion and Round-Key Split</H>
+      <P>The master seed is expanded into <strong>128 bytes (1024 bits)</strong> of key material via xorshift128+, then that single master key is sliced into four 32-byte (256-bit) round keys:</P>
+      <Formula>{`// Phase 2 — expand master seed into 128 bytes
+masterPRNG_seed = (masterSeed ⊕ 0xDEADBEEF) >>> 0
+masterKey[i]    = ⌊ xorshift128+(masterPRNG_seed) × 256 ⌋   for i = 0..127
+
+// Phase 3 — split into 4 × 32-byte round keys
+keyChain[0] = masterKey[ 0.. 31]   [256 bits = 64 hex chars]
+keyChain[1] = masterKey[32.. 63]
+keyChain[2] = masterKey[64.. 95]
+keyChain[3] = masterKey[96..127]`}</Formula>
 
       <Table rows={[
-        ["s₁, s₂, s₃, s₄", "Four integer seeds (user-supplied)"],
-        ["rolling", "Accumulator that folds all prior seeds"],
+        ["s₁, s₂, s₃, s₄", "Four integer seeds (user-supplied, order matters)"],
+        ["rolling / masterSeed", "32-bit accumulator; final value encodes all 4 seeds"],
         ["0x9E3779B9", "Golden-ratio constant (Knuth multiplicative hash)"],
         ["0x85EBCA6B", "MurmurHash3 mix constant"],
-        ["keyChain[i]", "32-byte AES-256 key for round i"],
+        ["masterKey", "128-byte key material expanded from masterSeed via xorshift128+"],
+        ["keyChain[i]", "32-byte (256-bit) round key — a 32-byte slice of masterKey"],
       ]} />
 
       <H>Passphrase Mode (PBKDF2-like)</H>

@@ -227,21 +227,32 @@ export function resolveKeyChain(options: AnonymizeOptions): string[] {
       return deriveKeyFromPassphrase(options.passphrase + tag, options.pbkdf2Iterations);
     });
   }
-  // Random (seed) mode — sequence-aware rolling key derivation:
-  //   rolling = mix(rolling, seed_i)  for i = 0..3
-  // Swapping any two seeds produces a different rolling value for that position
-  // AND all subsequent positions, so order is fully encoded into the key chain.
+  // Random (seed) mode — master-key-then-split derivation:
+  //   Phase 1: Fold all 4 seeds in sequence into a single 32-bit master seed.
+  //            Reordering any two seeds changes the master seed and therefore
+  //            all four round keys — seed sequence is cryptographically significant.
+  //   Phase 2: Expand the master seed into 128 bytes (1024 bits) of key material
+  //            via xorshift128+ seeded with (masterSeed ⊕ 0xDEADBEEF).
+  //   Phase 3: Slice the 128-byte block into four 32-byte (256-bit) round keys.
   const s = options.seeds;
   const ordered = [s[0] ?? 42, s[1] ?? 137, s[2] ?? 2024, s[3] ?? 7];
-  let rolling = 0x9e3779b9;  // golden-ratio constant as initial state
-  return ordered.map(seed => {
-    // Horner-style fold: rolling ← mix(rolling * PRIME ⊕ seed)
+  // Phase 1 — fold
+  let rolling = 0x9e3779b9;
+  for (const seed of ordered) {
     rolling = (Math.imul(rolling, 0x9e3779b9) ^ (seed >>> 0)) >>> 0;
     rolling = (rolling ^ (rolling >>> 16)) >>> 0;
     rolling = (Math.imul(rolling, 0x85ebca6b)) >>> 0;
     rolling = (rolling ^ (rolling >>> 13)) >>> 0;
-    return generateRandomKey(rolling);
-  });
+  }
+  // Phase 2 — expand master seed into 128 bytes
+  const masterRng = makeKeystream((rolling ^ 0xdeadbeef) >>> 0);
+  const masterBytes = Array.from({ length: 128 }, () => Math.floor(masterRng() * 256));
+  // Phase 3 — split into 4 × 32-byte round keys
+  return [0, 1, 2, 3].map(i =>
+    masterBytes.slice(i * 32, (i + 1) * 32)
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
 }
 
 // Compat: return first key (used by UI to display "the key" summary)

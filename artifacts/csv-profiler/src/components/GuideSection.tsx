@@ -87,7 +87,6 @@ interface KeyDerivStep {
   afterMul2: number;
   afterMix2: number;
   rollingAfter: number;
-  key: string;
 }
 
 interface Trace {
@@ -100,13 +99,16 @@ interface Trace {
   finalEncrypted: string;
   finalDecrypted: string;
   keyDerivSteps: KeyDerivStep[];
+  masterSeed: number;
+  masterKey: string;
   ksFirstBytes: number[][];
 }
 
 function computeTrace(seeds: number[], colName: string, rawValue: string): Trace {
   const value = rawValue || "A";
+
+  // Phase 1: fold all 4 seeds into a single master seed
   let rolling = 0x9e3779b9;
-  const keys: string[] = [];
   const keyDerivSteps: KeyDerivStep[] = [];
   for (let i = 0; i < 4; i++) {
     const seed = seeds[i] ?? 0;
@@ -116,10 +118,21 @@ function computeTrace(seeds: number[], colName: string, rawValue: string): Trace
     const afterMul2 = Math.imul(afterMix1, 0x85ebca6b) >>> 0;
     const afterMix2 = (afterMul2 ^ (afterMul2 >>> 13)) >>> 0;
     rolling = afterMix2;
-    const key = generateRandomKey(rolling);
-    keys.push(key);
-    keyDerivSteps.push({ seedIdx: i, seed, rollingBefore, afterMulXor, afterMix1, afterMul2, afterMix2, rollingAfter: rolling, key });
+    keyDerivSteps.push({ seedIdx: i, seed, rollingBefore, afterMulXor, afterMix1, afterMul2, afterMix2, rollingAfter: rolling });
   }
+  const masterSeed = rolling;
+
+  // Phase 2: expand master seed into 128 bytes via xorshift128+
+  const masterRng = makeKeystream((masterSeed ^ 0xdeadbeef) >>> 0);
+  const masterBytes = Array.from({ length: 128 }, () => Math.floor(masterRng() * 256));
+  const masterKey = masterBytes.map(b => b.toString(16).padStart(2, "0")).join("");
+
+  // Phase 3: split into 4 × 32-byte round keys
+  const keys = [0, 1, 2, 3].map(i =>
+    masterBytes.slice(i * 32, (i + 1) * 32)
+      .map(b => b.toString(16).padStart(2, "0"))
+      .join("")
+  );
 
   const colIVs = keys.map(k => hashColIV(k, colName));
   const ksArr = keys.map((k, i) => makeCellKsBytes(value.length + 32, k, colIVs[i]));
@@ -147,7 +160,7 @@ function computeTrace(seeds: number[], colName: string, rawValue: string): Trace
   }
 
   const ksFirstBytes = ksArr.map(ks => Array.from(ks.slice(0, 10)));
-  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec, keyDerivSteps, ksFirstBytes };
+  return { keys, colIVs, encStages, encShifts, decStages, decShifts, finalEncrypted, finalDecrypted: dec, keyDerivSteps, masterSeed, masterKey, ksFirstBytes };
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -205,15 +218,15 @@ function exportTracePDF(trace: Trace, seeds: number[], colName: string, cellValu
 
   const keyDerivRows = trace.keyDerivSteps.map((s, i) => {
     const bg = i % 2 === 0 ? "#fff" : "#f8f9fa";
-    return `<tr style="background:${bg}">
+    const isMaster = i === 3;
+    return `<tr style="background:${isMaster ? "#eef2ff" : bg};${isMaster ? "font-weight:bold;" : ""}">
       <td>${i + 1}</td>
       <td style="font-family:monospace;font-weight:bold">${s.seed}</td>
       <td style="font-family:monospace">${hex8(s.rollingBefore)}</td>
       <td style="font-family:monospace">${hex8(s.afterMulXor)}</td>
       <td style="font-family:monospace">${hex8(s.afterMix1)}</td>
       <td style="font-family:monospace">${hex8(s.afterMul2)}</td>
-      <td style="font-family:monospace">${hex8(s.afterMix2)}</td>
-      <td style="font-family:monospace;word-break:break-all;font-size:9px">${s.key}</td>
+      <td style="font-family:monospace;color:${isMaster ? "#4338ca" : "inherit"};font-weight:${isMaster ? "bold" : "normal"}">${hex8(s.afterMix2)}${isMaster ? " ← Master Seed" : ""}</td>
     </tr>`;
   }).join("");
 
@@ -342,19 +355,28 @@ function exportTracePDF(trace: Trace, seeds: number[], colName: string, cellValu
     </div>
   </div>
 
-  <!-- Phase 1: Key Generation -->
-  <div class="phase-heading">Phase 1 — Master Key Generation <span class="phase-sub">How 4 seed numbers become 4 secret keys</span></div>
+  <!-- Phase 1: Master Key Generation -->
+  <div class="phase-heading">Phase 1 — Master Key Generation <span class="phase-sub">4 seeds → master seed → 1024-bit master key → 4 × 256-bit round keys</span></div>
   <p style="font-size:10px;color:#475569;margin-bottom:10px;line-height:1.6">
-    Starting from the golden-ratio constant <code style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:3px">0x9E3779B9</code>,
-    each seed is "mixed in" using a Horner-style multiply-XOR fold followed by two avalanche passes (MurmurHash3 finaliser).
-    The final rolling accumulator is fed into xorshift128+ to generate 256 random bits — the round key.
+    <strong>Step 1 (Fold):</strong> Starting from the golden-ratio constant <code style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:3px">0x9E3779B9</code>,
+    all 4 seeds are blended into a single 32-bit <strong>master seed</strong> using a Horner-style multiply-XOR fold + MurmurHash3 avalanche — the highlighted row is the master seed.<br/>
+    <strong>Step 2 (Expand):</strong> The master seed is fed into xorshift128+ (seeded with masterSeed ⊕ 0xDEADBEEF) to generate 128 bytes (1024 bits) of key material.<br/>
+    <strong>Step 3 (Split):</strong> The 128-byte block is sliced into 4 × 32-byte (256-bit) round keys: K1=bytes 0–31, K2=bytes 32–63, K3=bytes 64–95, K4=bytes 96–127.
   </p>
+  <p style="font-size:10px;color:#4338ca;font-weight:600;margin-bottom:8px">Master Seed: ${hex8(trace.masterSeed)}</p>
+  <p style="font-size:10px;color:#475569;margin-bottom:6px">Master Key (128 bytes = 1024 bits):</p>
+  <p style="font-family:monospace;font-size:8px;word-break:break-all;color:#1e293b;background:#f1f5f9;padding:6px 8px;border-radius:4px;margin-bottom:10px">${trace.masterKey}</p>
   <table>
     <thead><tr>
-      <th>Round</th><th>Seed</th><th>Rolling before</th><th>After mul⊕seed</th>
-      <th>After mix #1</th><th>After mul #2</th><th>After mix #2</th><th>Key (256 bits)</th>
+      <th>Fold #</th><th>Seed</th><th>Rolling before</th><th>After mul⊕seed</th>
+      <th>After mix #1</th><th>After mul #2</th><th>After mix #2 (rolling after)</th>
     </tr></thead>
     <tbody>${keyDerivRows}</tbody>
+  </table>
+  <p style="font-size:10px;color:#475569;margin:10px 0 6px"><strong>Round keys (sliced from master key):</strong></p>
+  <table>
+    <thead><tr><th>Key</th><th>Master key offset</th><th>Value (256 bits = 64 hex chars)</th></tr></thead>
+    <tbody>${[0,1,2,3].map((i,_,__) => `<tr style="background:${i%2===0?"#fff":"#f8f9fa"}"><td>K${i+1}</td><td>bytes ${i*32}–${i*32+31}</td><td style="font-family:monospace;font-size:8px;word-break:break-all">${trace.keys[i]}</td></tr>`).join("")}</tbody>
   </table>
 
   <!-- Phase 2: Encryption -->
@@ -700,7 +722,9 @@ export function GuideSection() {
               <div className="text-5xl mb-4">🔑</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Making the Secret Keys</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                Your 4 seed numbers are blended together step by step<br />to produce 4 different <strong>256-bit secret keys</strong>. Here's exactly how.
+                Your 4 seed numbers are blended together into a single <strong>master seed</strong>.<br />
+                That master seed expands into a <strong>1024-bit master key</strong>, which is split into<br />
+                <strong>4 independent 256-bit round keys</strong>. Here's exactly how.
               </p>
             </div>
 
@@ -738,10 +762,10 @@ export function GuideSection() {
               </div>
             </div>
 
-            {/* Step-by-step with actual values */}
+            {/* Phase 1 — Seed Folding */}
             <BigCard color="bg-white border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">The Blending — With Your Actual Numbers</h3>
-              <p className="text-slate-500 text-sm mb-5">Every number below is computed live from your seeds [{seeds.join(", ")}]. Each row shows the 4 mixing steps applied to one seed.</p>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 1 — Fold Seeds into Master Seed</h3>
+              <p className="text-slate-500 text-sm mb-5">All 4 seeds are blended into a <strong>single 32-bit master seed</strong> using a rolling accumulator. Every seed changes every subsequent accumulator state — the sequence is cryptographically significant.</p>
 
               <div className="flex gap-4 items-start mb-5">
                 <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0">0</div>
@@ -757,6 +781,7 @@ export function GuideSection() {
               {trace.keyDerivSteps.map((kd, i) => {
                 const bgColors = ["bg-blue-50 border-blue-200","bg-violet-50 border-violet-200","bg-amber-50 border-amber-200","bg-emerald-50 border-emerald-200"];
                 const textColors = ["text-blue-700","text-violet-700","text-amber-700","text-emerald-700"];
+                const isLast = i === 3;
                 return (
                   <div key={i} className={`rounded-xl border-2 ${bgColors[i]} p-5 mb-4`}>
                     <div className="flex items-center gap-3 mb-4">
@@ -765,6 +790,7 @@ export function GuideSection() {
                         <div className={`font-bold text-base ${textColors[i]}`}>Seed {i+1} = {kd.seed}</div>
                         <div className="text-xs text-slate-400">Rolling before: <span className="font-mono">{("0x"+kd.rollingBefore.toString(16).toUpperCase().padStart(8,"0"))}</span></div>
                       </div>
+                      {isLast && <div className="ml-auto text-xs font-bold bg-indigo-600 text-white px-3 py-1 rounded-full">→ Master Seed</div>}
                     </div>
                     <div className="space-y-2 text-xs">
                       <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
@@ -788,31 +814,55 @@ export function GuideSection() {
                         <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMix2.toString(16).toUpperCase().padStart(8,"0")}</span>
                       </div>
                     </div>
-                    <div className={`mt-3 rounded-lg p-3 bg-white border ${bgColors[i].split(" ")[1]}`}>
-                      <div className={`text-xs font-semibold uppercase ${textColors[i]} mb-1`}>Key {i+1} (64 hex chars = 256 bits)</div>
-                      <div className={`font-mono text-xs break-all ${textColors[i]}`}>{kd.key}</div>
-                    </div>
+                    {isLast && (
+                      <div className="mt-3 rounded-lg p-3 bg-indigo-900 border border-indigo-700">
+                        <div className="text-xs font-semibold uppercase text-indigo-300 mb-1">Master Seed (32-bit — all 4 seeds encoded)</div>
+                        <div className="font-mono text-base font-bold text-indigo-200">{"0x" + kd.rollingAfter.toString(16).toUpperCase().padStart(8, "0")} = {kd.rollingAfter}</div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </BigCard>
 
-            {/* Why 256 bits */}
+            {/* Phase 2 — Master Key expansion */}
+            <BigCard color="bg-white border-indigo-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 2 — Expand Master Seed into Master Key (1024 bits)</h3>
+              <p className="text-slate-500 text-sm mb-4">The master seed is fed into <strong>xorshift128+</strong> (seeded with <span className="font-mono bg-slate-100 px-1 rounded text-xs">masterSeed ⊕ 0xDEADBEEF</span>) to generate <strong>128 bytes = 1024 bits</strong> of key material — enough for all 4 round keys.</p>
+              <div className="bg-slate-900 rounded-xl p-5 mb-4">
+                <div className="text-slate-400 text-xs font-bold uppercase mb-2">Master Seed → xorshift128+ → 128 bytes (256 hex chars)</div>
+                <div className="font-mono text-[10px] break-all text-indigo-300 leading-relaxed">{trace.masterKey}</div>
+              </div>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-800">
+                <strong>Why xorshift128+?</strong> It's a fast, statistically strong PRNG (passes BigCrush). Given the same master seed, it always produces the same 128-byte sequence — which is exactly what we need for deterministic decryption.
+              </div>
+            </BigCard>
+
+            {/* Phase 3 — Split */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-800 rounded-2xl p-6 text-white">
-                <h3 className="font-bold mb-3 text-base">🗝️ Why 256 bits?</h3>
-                <p className="text-slate-300 text-sm leading-relaxed mb-3">A 256-bit key has 2²⁵⁶ possible values. Written out, that's roughly:</p>
-                <div className="bg-black/30 rounded-lg p-3 font-mono text-green-300 text-xs break-all">115,792,089,237,316,195,423,570,985,008,687,907,853,269,984,665,640,564,039,457,584,007,913,129,639,936</div>
-                <p className="text-slate-400 text-xs mt-3">That's more than the number of atoms in the observable universe (≈10⁸⁰). Even with all the computers ever built running for billions of years, you can't brute-force a 256-bit key.</p>
+                <h3 className="font-bold mb-3 text-base">Phase 3 — Split into 4 × 256-bit Round Keys</h3>
+                <p className="text-slate-300 text-sm leading-relaxed mb-4">The 128-byte master key is sliced into four equal 32-byte (256-bit) segments. Each segment is one round key:</p>
+                <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-1">
+                  <div className="text-slate-400">K1 = masterKey[ 0.. 31]</div>
+                  <div className="text-slate-400">K2 = masterKey[32.. 63]</div>
+                  <div className="text-slate-400">K3 = masterKey[64.. 95]</div>
+                  <div className="text-slate-400">K4 = masterKey[96..127]</div>
+                </div>
+                <p className="text-slate-400 text-xs mt-3">A 256-bit key has 2²⁵⁶ ≈ 10⁷⁷ possible values — more than atoms in the universe.</p>
               </div>
               <div className="bg-slate-900 rounded-2xl p-6">
-                <h3 className="text-white font-bold mb-4 text-base">All 4 generated keys:</h3>
+                <h3 className="text-white font-bold mb-4 text-base">Your 4 round keys:</h3>
                 <div className="space-y-3">
                   {trace.keys.map((k, i) => {
                     const colors = ["text-blue-300","text-violet-300","text-amber-300","text-emerald-300"];
+                    const offsets = ["bytes 0–31","bytes 32–63","bytes 64–95","bytes 96–127"];
                     return (
                       <div key={i} className="flex items-start gap-2">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded bg-white/10 shrink-0 mt-0.5 ${colors[i]}`}>K{i+1}</span>
+                        <div className="shrink-0">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded bg-white/10 ${colors[i]}`}>K{i+1}</span>
+                          <div className={`text-[9px] mt-0.5 text-center ${colors[i]} opacity-70`}>{offsets[i]}</div>
+                        </div>
                         <span className={`font-mono text-[10px] break-all leading-relaxed ${colors[i]}`}>{k}</span>
                       </div>
                     );
@@ -1301,7 +1351,7 @@ export function GuideSection() {
               <div className="grid grid-cols-2 gap-4">
                 {[
                   ["Seed 🌱", "One of 4 numbers that form your password. Each must be known and in the correct order to decrypt."],
-                  ["Key 🔑", "A 256-bit (64 hex char) string derived from one seed via the rolling accumulator + xorshift128+ PRNG."],
+                  ["Key 🔑", "One of 4 × 256-bit (64 hex char) round keys. All 4 are derived by expanding a single master seed (formed from all 4 seeds) into 128 bytes, then splitting into four 32-byte segments."],
                   ["Column IV 📍", "A 32-bit integer derived by hashing (key prefix + column name). Separates the keystream of each column."],
                   ["Keystream 🌊", "The sequence of random bytes (one per character) produced by xorshift128+ seeded with (key prefix ⊕ column IV)."],
                   ["FPE 🔄", "Format-Preserving Encryption — characters stay within their own alphabet (digit→digit, letter→letter)."],
@@ -1309,7 +1359,9 @@ export function GuideSection() {
                   ["xorshift128+ 🎲", "A fast PRNG that generates pseudo-random bytes. 'Pseudo' = same seed always gives same sequence."],
                   ["4-Round Chain 🔗", "Applying 4 independent encryption rounds multiplies the effective security — undoing any round requires knowing that round's key."],
                   ["Avalanche effect 🌊", "A property where changing 1 bit of a seed flips ~50% of the bits in the final key."],
-                  ["Rolling accumulator 🔢", "The 32-bit value that accumulates all 4 seeds one-by-one to produce the per-round state."],
+                  ["Master Seed 🌱→🔐", "The final 32-bit rolling accumulator value after all 4 seeds have been folded in. It encodes all 4 seeds and their order — one bit different in any seed changes this completely."],
+                  ["Master Key 🗝️", "128 bytes (1024 bits) generated from the master seed via xorshift128+. Split into four 32-byte round keys."],
+                  ["Rolling accumulator 🔢", "The 32-bit value that accumulates all 4 seeds one-by-one. The final value becomes the master seed."],
                 ].map(([term, def]) => (
                   <div key={term as string} className="flex gap-3 items-start py-2 border-b border-slate-100">
                     <div className="font-bold text-slate-800 text-sm shrink-0 w-36">{term}</div>
