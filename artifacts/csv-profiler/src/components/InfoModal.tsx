@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Info, X, ChevronRight } from "lucide-react";
+import { Info, X, ChevronRight, BookOpen } from "lucide-react";
+import { GuideSection } from "./GuideSection";
 
 const SECTIONS = [
+  { id: "guide",   label: "Interactive Guide" },
   { id: "seeds",   label: "Seed → Key Generation" },
   { id: "fpe",     label: "Format-Preserving Encryption" },
   { id: "chain",   label: "4-Round Chain & Tiebreaker" },
@@ -424,6 +426,7 @@ t-Closeness FAIL (TVD > t) → distribution within ECs diverges too much`}</Form
 }
 
 const SECTION_CONTENT: Record<SectionId, React.ReactNode> = {
+  guide:   <GuideSection />,
   seeds:   <SectionSeeds />,
   fpe:     <SectionFPE />,
   chain:   <SectionChain />,
@@ -435,7 +438,7 @@ const SECTION_CONTENT: Record<SectionId, React.ReactNode> = {
 
 export function InfoModal() {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState<SectionId>("seeds");
+  const [active, setActive] = useState<SectionId>("guide");
 
   return (
     <>
@@ -471,20 +474,27 @@ export function InfoModal() {
             {/* Body */}
             <div className="flex flex-1 min-h-0">
               {/* Sidebar */}
-              <nav className="w-52 shrink-0 border-r border-slate-200 bg-slate-50 py-4 flex flex-col gap-0.5 px-2 overflow-y-auto">
+              <nav className="w-56 shrink-0 border-r border-slate-200 bg-slate-50 py-4 flex flex-col gap-0.5 px-2 overflow-y-auto">
                 {SECTIONS.map(s => (
                   <button
                     key={s.id}
                     onClick={() => setActive(s.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
                       active === s.id
-                        ? "bg-indigo-600 text-white shadow"
-                        : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                        ? s.id === "guide" ? "bg-indigo-600 text-white shadow" : "bg-indigo-600 text-white shadow"
+                        : s.id === "guide" ? "text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200" : "text-slate-600 hover:bg-slate-200 hover:text-slate-900"
                     }`}
                   >
-                    {s.label}
+                    {s.id === "guide" && <BookOpen className="w-3.5 h-3.5 shrink-0" />}
+                    <span>{s.label}</span>
+                    {s.id === "guide" && active !== "guide" && (
+                      <span className="ml-auto text-xs bg-indigo-600 text-white px-1.5 py-0.5 rounded-full font-bold">Start</span>
+                    )}
                   </button>
                 ))}
+                <div className="mt-2 mx-1 border-t border-slate-200 pt-2">
+                  <p className="text-xs text-slate-400 px-2">Mathematical Reference</p>
+                </div>
               </nav>
 
               {/* Content */}
