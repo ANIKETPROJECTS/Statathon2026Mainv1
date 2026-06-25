@@ -480,7 +480,15 @@ function SeedBox({ label, value, onChange }: { label: string; value: number; onC
 }
 
 // Small character shift bubble
-function ShiftBubble({ shift }: { shift: CharShift }) {
+function getCharType(code: number, isLeadDigit: boolean): { type: string; modSize: number; base: number; size: number } | null {
+  if (code >= 65 && code <= 90) return { type: "Uppercase", modSize: 25, base: 65, size: 26 };
+  if (code >= 97 && code <= 122) return { type: "Lowercase", modSize: 25, base: 97, size: 26 };
+  if (isLeadDigit)               return { type: "Lead digit", modSize: 8, base: 49, size: 9 };
+  if (code >= 48 && code <= 57)  return { type: "Digit", modSize: 9, base: 48, size: 10 };
+  return null;
+}
+
+function ShiftBubble({ shift, isLeadDigit }: { shift: CharShift; isLeadDigit?: boolean }) {
   if (!shift.changed) {
     return (
       <div className="flex flex-col items-center gap-1 px-3">
@@ -490,10 +498,13 @@ function ShiftBubble({ shift }: { shift: CharShift }) {
       </div>
     );
   }
+  const code = shift.from.charCodeAt(0);
+  const info = getCharType(code, !!isLeadDigit);
+  const shiftAmt = info ? 1 + (shift.k % info.modSize) : 0;
   return (
     <div className="flex flex-col items-center gap-1 px-3">
       <span className="text-2xl font-mono font-bold text-blue-600">{shift.from}</span>
-      <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 rounded-full px-1.5 py-0.5">+{shift.k % (shift.from.match(/[a-zA-Z]/) ? 25 : 9)}</span>
+      <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 rounded-full px-1.5 py-0.5">+{shiftAmt}</span>
       <span className="text-2xl font-mono font-bold text-green-600">{shift.to}</span>
     </div>
   );
@@ -1192,16 +1203,98 @@ export function GuideSection() {
                   <ValuePill value={trace.encStages[encRoundIdx+1]} color="text-green-700 bg-green-50 border-2 border-green-200" />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3 justify-center mb-4">
-                {encShifts.slice(0,14).map((s, i) => <ShiftBubble key={i} shift={s} />)}
-                {encShifts.length > 14 && <div className="flex items-center text-slate-400 text-sm italic">+{encShifts.length - 14} more…</div>}
-              </div>
-              <div className="flex items-center gap-6 text-xs flex-wrap justify-center">
-                <span><span className="font-mono font-bold text-blue-600">X</span> = input char</span>
-                <span><span className="text-amber-600 font-semibold bg-amber-50 px-1 rounded">+N</span> = shift from keystream byte</span>
-                <span><span className="font-mono font-bold text-green-600">Y</span> = output char</span>
-                <span><span className="font-mono font-bold text-slate-400">—</span> = symbol, unchanged</span>
-              </div>
+              {(() => {
+                const roundInput = trace.encStages[encRoundIdx];
+                const isAllNum = /^\d+$/.test(roundInput) && roundInput.length > 1;
+                return (
+                  <>
+                    <div className="flex flex-wrap gap-3 justify-center mb-4">
+                      {encShifts.slice(0,14).map((s, i) => <ShiftBubble key={i} shift={s} isLeadDigit={isAllNum && i === 0} />)}
+                      {encShifts.length > 14 && <div className="flex items-center text-slate-400 text-sm italic">+{encShifts.length - 14} more…</div>}
+                    </div>
+                    <div className="flex items-center gap-6 text-xs flex-wrap justify-center mb-5">
+                      <span><span className="font-mono font-bold text-blue-600">X</span> = input char</span>
+                      <span><span className="text-amber-600 font-semibold bg-amber-50 px-1 rounded">+N</span> = shift from keystream byte</span>
+                      <span><span className="font-mono font-bold text-green-600">Y</span> = output char</span>
+                      <span><span className="font-mono font-bold text-slate-400">—</span> = symbol, unchanged</span>
+                    </div>
+
+                    {/* Per-character shift derivation table */}
+                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <div className="bg-slate-50 px-4 py-2.5 border-b border-slate-200 flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">🔢 Exact shift derivation — Round {encRoundIdx+1}</span>
+                        <span className="text-[10px] text-slate-400">shows how each +N is calculated from keystream byte k</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-100 bg-slate-50/50">
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold w-12">In</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold">Type</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold">k (byte)</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold">k mod N</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold">Shift</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold">ASCII arithmetic</th>
+                              <th className="px-3 py-2 text-left text-slate-500 font-semibold w-12">Out</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50">
+                            {encShifts.slice(0, 12).map((s, i) => {
+                              const code = s.from.charCodeAt(0);
+                              const isLead = isAllNum && i === 0;
+                              const info = getCharType(code, isLead);
+                              if (!s.changed || !info) {
+                                return (
+                                  <tr key={i} className="text-slate-400">
+                                    <td className="px-3 py-2 font-mono font-bold text-sm">{s.from}</td>
+                                    <td className="px-3 py-2">Symbol</td>
+                                    <td className="px-3 py-2 font-mono">{s.k}</td>
+                                    <td className="px-3 py-2 italic">—</td>
+                                    <td className="px-3 py-2 italic">—</td>
+                                    <td className="px-3 py-2 italic">unchanged (symbols stay as-is)</td>
+                                    <td className="px-3 py-2 font-mono font-bold text-sm">{s.to}</td>
+                                  </tr>
+                                );
+                              }
+                              const { modSize, base, size } = info;
+                              const kMod = s.k % modSize;
+                              const shift = 1 + kMod;
+                              const fromOff = code - base;
+                              const rawSum = fromOff + shift;
+                              const newOff = rawSum % size;
+                              const newCode = newOff + base;
+                              return (
+                                <tr key={i} className="hover:bg-slate-50 transition-colors">
+                                  <td className="px-3 py-2.5 font-mono font-bold text-base text-blue-600">{s.from}</td>
+                                  <td className="px-3 py-2.5 text-slate-500">{info.type}</td>
+                                  <td className="px-3 py-2.5">
+                                    <span className="font-mono font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">{s.k}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono">
+                                    <span className="text-slate-500">{s.k} mod {modSize} = </span>
+                                    <span className="font-bold text-indigo-600">{kMod}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono font-bold">
+                                    <span className="text-slate-500">1 + {kMod} = </span>
+                                    <span className="text-amber-600 bg-amber-50 rounded px-1">+{shift}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono text-slate-500">
+                                    ({code} − {base} + {shift}) mod {size} = {rawSum} mod {size} = <span className="text-indigo-600 font-bold">{newOff}</span> → chr({newOff} + {base}) = chr(<span className="text-green-700 font-bold">{newCode}</span>)
+                                  </td>
+                                  <td className="px-3 py-2.5 font-mono font-bold text-base text-green-600">{s.to}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        {encShifts.length > 12 && (
+                          <div className="px-4 py-2 text-xs text-slate-400 italic border-t border-slate-100">+{encShifts.length - 12} more characters follow the same pattern</div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Why 4 rounds */}
