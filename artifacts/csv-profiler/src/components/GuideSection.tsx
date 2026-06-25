@@ -783,10 +783,10 @@ export function GuideSection() {
                   <p className="text-slate-500 text-sm mb-2">
                     We don't start from zero — we start from <strong>0x9E3779B9</strong>. This is the fractional part of the golden ratio φ = 1.6180339887… multiplied by 2³² = 4,294,967,296, then rounded to the nearest integer. Golden-ratio-based constants have excellent bit-diffusion properties (known as <em>Knuth's multiplicative hash</em>).
                   </p>
-                  <div className="font-mono text-xs bg-slate-900 text-emerald-300 rounded-lg px-4 py-3 inline-block space-y-1">
+                  <div className="font-mono text-xs bg-slate-50 border border-slate-200 text-emerald-700 rounded-lg px-4 py-3 inline-block space-y-1">
                     <div>φ = 1.6180339887…</div>
                     <div>φ × 2³² = 6,948,403,464.3… → fractional part × 2³² = 2,654,435,769</div>
-                    <div className="text-white font-bold mt-1">rolling₀ = 0x9E3779B9 = 2,654,435,769</div>
+                    <div className="text-slate-800 font-bold mt-1">rolling₀ = 0x9E3779B9 = 2,654,435,769</div>
                   </div>
                 </div>
               </div>
@@ -952,29 +952,29 @@ export function GuideSection() {
                     {/* Step 3: iteration */}
                     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                       <div className="text-xs font-semibold text-slate-500 uppercase mb-3">Step 2c — Each PRNG call advances the state and produces one byte</div>
-                      <div className="font-mono text-[10px] bg-slate-900 text-slate-300 rounded-lg p-3 space-y-0.5 mb-3">
-                        <div className="text-emerald-400 text-xs mb-1">// xorshift128+ iterate (called 32 times):</div>
-                        <div>a ← a ⊕ (a &lt;&lt; 13);   a = a &gt;&gt;&gt; 0   <span className="text-slate-500">// left-shift XOR</span></div>
-                        <div>a ← a ⊕ (a &gt;&gt; 17)              <span className="text-slate-500">// right-shift XOR</span></div>
-                        <div>a ← a ⊕ (a &lt;&lt;  5);   a = a &gt;&gt;&gt; 0   <span className="text-slate-500">// left-shift XOR</span></div>
+                      <div className="font-mono text-[10px] bg-slate-50 border border-slate-200 text-slate-700 rounded-lg p-3 space-y-0.5 mb-3">
+                        <div className="text-emerald-600 text-xs mb-1">// xorshift128+ iterate (called 32 times):</div>
+                        <div>a ← a ⊕ (a &lt;&lt; 13);   a = a &gt;&gt;&gt; 0   <span className="text-slate-400">// left-shift XOR</span></div>
+                        <div>a ← a ⊕ (a &gt;&gt; 17)              <span className="text-slate-400">// right-shift XOR</span></div>
+                        <div>a ← a ⊕ (a &lt;&lt;  5);   a = a &gt;&gt;&gt; 0   <span className="text-slate-400">// left-shift XOR</span></div>
                         <div className="mt-1">b ← b ⊕ (b &gt;&gt;  7);   b = b &gt;&gt;&gt; 0</div>
                         <div>b ← b ⊕ (b &lt;&lt;  9);   b = b &gt;&gt;&gt; 0</div>
                         <div>b ← b ⊕ (b &gt;&gt;  8);   b = b &gt;&gt;&gt; 0</div>
-                        <div className="mt-1 text-yellow-300">raw = (a + b) &gt;&gt;&gt; 0               <span className="text-slate-500">// sum of both registers (32-bit)</span></div>
-                        <div className="text-yellow-300">byte = Math.floor(raw / 0x100000000 × 256)  <span className="text-slate-500">// scale to 0–255</span></div>
+                        <div className="mt-1 text-amber-600">raw = (a + b) &gt;&gt;&gt; 0               <span className="text-slate-400">// sum of both registers (32-bit)</span></div>
+                        <div className="text-amber-600">byte = Math.floor(raw / 0x100000000 × 256)  <span className="text-slate-400">// scale to 0–255</span></div>
                       </div>
                       <div className="text-xs text-slate-500">32 such calls produce 32 bytes (256 bits). Each call is deterministic given the seed, so the same master seed always produces the same 32 bytes.</div>
                     </div>
 
                     {/* Master Key display */}
-                    <div className="bg-indigo-950 border border-indigo-700 rounded-xl p-5">
-                      <div className="text-indigo-300 text-xs font-bold uppercase mb-2">Master Key — 256 bits = 32 bytes = 64 hex characters</div>
-                      <div className="font-mono text-sm break-all text-indigo-100 leading-relaxed tracking-wider">
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-5">
+                      <div className="text-indigo-700 text-xs font-bold uppercase mb-2">Master Key — 256 bits = 32 bytes = 64 hex characters</div>
+                      <div className="font-mono text-sm break-all text-indigo-800 leading-relaxed tracking-wider">
                         {trace.masterKey.match(/.{1,8}/g)?.map((chunk, ci) => (
-                          <span key={ci} className={`${ci % 2 === 0 ? "text-indigo-200" : "text-indigo-400"} mr-1`}>{chunk}</span>
+                          <span key={ci} className={`${ci % 2 === 0 ? "text-indigo-700" : "text-indigo-500"} mr-1`}>{chunk}</span>
                         ))}
                       </div>
-                      <div className="text-indigo-400 text-[10px] mt-3">Bytes 0–7 shown in groups of 8 hex chars (4 bytes). The first 8 hex chars (<span className="font-mono text-indigo-200">{trace.masterKey.slice(0,8)}</span>) seed Phase 3.</div>
+                      <div className="text-indigo-500 text-[10px] mt-3">Bytes 0–7 shown in groups of 8 hex chars (4 bytes). The first 8 hex chars (<span className="font-mono text-indigo-700">{trace.masterKey.slice(0,8)}</span>) seed Phase 3.</div>
                     </div>
 
                     <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-800 leading-relaxed">
@@ -1159,7 +1159,7 @@ export function GuideSection() {
                     </div>
                     <div>
                       <div className="text-xs font-semibold text-slate-500 mb-1">Formula:</div>
-                      <div className="font-mono text-xs bg-slate-900 text-emerald-300 rounded-lg px-3 py-2">{f.formula}</div>
+                      <div className="font-mono text-xs bg-slate-50 border border-slate-200 text-emerald-700 rounded-lg px-3 py-2">{f.formula}</div>
                     </div>
                     <div className="text-xs text-slate-500 leading-relaxed">{f.why}</div>
                   </div>
@@ -1213,22 +1213,22 @@ export function GuideSection() {
                   <p className="text-slate-500 text-sm leading-relaxed mb-3">With 4 independent rounds (each using a different key), any correlation between input and output is multiplied through 4 layers of independent random shifts. The probability of guessing the original from the anonymized value falls dramatically.</p>
                   <p className="text-slate-500 text-sm leading-relaxed">Think of it like painting over a wall 4 times with 4 different colours — you can't tell the original colour by looking at the surface.</p>
                 </div>
-                <div className="rounded-xl bg-slate-900 p-4">
-                  <div className="text-slate-400 text-xs font-bold uppercase mb-3">Value after each round:</div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+                  <div className="text-slate-600 text-xs font-bold uppercase mb-3">Value after each round:</div>
                   {trace.encStages.map((s, i) => (
                     <div key={i} className="flex items-center gap-3 mb-2">
                       <span className="text-xs text-slate-500 w-16 text-right shrink-0">{i === 0 ? "Original" : `Round ${i}`}</span>
-                      <span className={`font-mono font-bold px-3 py-1 rounded-lg ${i === 0 ? "text-blue-300 bg-blue-900/40" : i === 4 ? "text-green-300 bg-green-900/40" : "text-slate-300 bg-slate-800"}`}>{s}</span>
+                      <span className={`font-mono font-bold px-3 py-1 rounded-lg ${i === 0 ? "text-blue-700 bg-blue-100" : i === 4 ? "text-green-700 bg-green-100" : "text-slate-600 bg-slate-100"}`}>{s}</span>
                     </div>
                   ))}
                 </div>
               </div>
             </BigCard>
 
-            <div className="rounded-2xl bg-green-900 p-6 text-center">
-              <div className="text-green-300 text-sm font-semibold uppercase tracking-wide mb-2">Final Anonymized Value</div>
-              <ValuePill value={trace.finalEncrypted} color="text-green-300 bg-green-800 border-2 border-green-600" />
-              <p className="text-green-400 text-sm mt-3">This is what gets written to the CSV. Without all 4 seeds in the correct order, there is no way to reverse this.</p>
+            <div className="rounded-2xl bg-green-50 border border-green-200 p-6 text-center">
+              <div className="text-green-700 text-sm font-semibold uppercase tracking-wide mb-2">Final Anonymized Value</div>
+              <ValuePill value={trace.finalEncrypted} color="text-green-700 bg-green-100 border-2 border-green-400" />
+              <p className="text-green-600 text-sm mt-3">This is what gets written to the CSV. Without all 4 seeds in the correct order, there is no way to reverse this.</p>
             </div>
           </div>
         )}
@@ -1299,15 +1299,15 @@ export function GuideSection() {
                     </div>
                   </div>
                 </div>
-                <div className="rounded-xl bg-slate-900 p-5">
-                  <div className="text-slate-400 text-xs font-bold uppercase mb-3">Decryption chain (your values):</div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-5">
+                  <div className="text-slate-600 text-xs font-bold uppercase mb-3">Decryption chain (your values):</div>
                   {[...trace.decStages].map((s, i) => (
                     <div key={i} className="flex items-center gap-2 mb-2">
                       <span className="text-xs text-slate-500 w-20 text-right shrink-0">
                         {i === 0 ? "Encrypted" : `Undo R${4 - i + 1}`}
                       </span>
-                      <span className={`font-mono font-bold px-2 py-1 rounded text-xs ${i === 0 ? "text-green-300 bg-green-900/40" : i === 4 ? "text-blue-300 bg-blue-900/40" : "text-slate-300 bg-slate-800"}`}>{s}</span>
-                      {i < trace.decStages.length - 1 && <span className="text-xs text-violet-400">← Key {4-i}</span>}
+                      <span className={`font-mono font-bold px-2 py-1 rounded text-xs ${i === 0 ? "text-green-700 bg-green-100" : i === 4 ? "text-blue-700 bg-blue-100" : "text-slate-600 bg-slate-100"}`}>{s}</span>
+                      {i < trace.decStages.length - 1 && <span className="text-xs text-violet-600">← Key {4-i}</span>}
                     </div>
                   ))}
                 </div>
@@ -1412,61 +1412,61 @@ export function GuideSection() {
             </div>
 
             {/* ── Live System Trace Diagram ─────────────────────────── */}
-            <div className="rounded-2xl bg-black border border-slate-700 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-800 text-center">
-                <h3 className="text-white font-bold text-lg">🔍 Full System Trace — Your Actual Values</h3>
-                <p className="text-slate-400 text-sm mt-1">Seeds [{seeds.join(", ")}] · Column "{colName}" · Value "{cellValue || "A"}"</p>
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-200 text-center">
+                <h3 className="text-slate-800 font-bold text-lg">🔍 Full System Trace — Your Actual Values</h3>
+                <p className="text-slate-500 text-sm mt-1">Seeds [{seeds.join(", ")}] · Column "{colName}" · Value "{cellValue || "A"}"</p>
               </div>
               <div className="p-6 space-y-4">
 
                 {/* Seeds */}
                 <div className="flex items-stretch gap-3 justify-center">
                   {seeds.map((s, i) => (
-                    <div key={i} className="bg-slate-800 border border-slate-600 rounded-xl px-5 py-3 text-center">
-                      <div className="text-[10px] text-slate-400 font-semibold uppercase mb-1">Seed {i+1}</div>
-                      <div className="font-mono font-bold text-white text-xl">{s}</div>
+                    <div key={i} className="bg-white border border-slate-200 rounded-xl px-5 py-3 text-center">
+                      <div className="text-[10px] text-slate-500 font-semibold uppercase mb-1">Seed {i+1}</div>
+                      <div className="font-mono font-bold text-slate-800 text-xl">{s}</div>
                     </div>
                   ))}
                 </div>
 
                 {/* Seeds → Master Seed arrow */}
                 <div className="flex flex-col items-center gap-0.5">
-                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="w-px h-3 bg-slate-300"/>
                   <div className="text-[10px] text-slate-500 font-semibold">fold via rolling accumulator + MurmurHash3</div>
-                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                  <ArrowDown className="w-4 h-4 text-slate-400"/>
                 </div>
 
                 {/* Master Seed */}
-                <div className="mx-auto w-fit bg-indigo-950 border border-indigo-700 rounded-xl px-10 py-3 text-center">
-                  <div className="text-[10px] text-indigo-400 font-semibold uppercase mb-1">Master Seed (32-bit)</div>
-                  <div className="font-mono font-bold text-indigo-200 text-base">{"0x" + trace.masterSeed.toString(16).toUpperCase().padStart(8,"0")}</div>
+                <div className="mx-auto w-fit bg-indigo-50 border border-indigo-200 rounded-xl px-10 py-3 text-center">
+                  <div className="text-[10px] text-indigo-600 font-semibold uppercase mb-1">Master Seed (32-bit)</div>
+                  <div className="font-mono font-bold text-indigo-700 text-base">{"0x" + trace.masterSeed.toString(16).toUpperCase().padStart(8,"0")}</div>
                 </div>
 
                 {/* Master Seed → Master Key arrow */}
                 <div className="flex flex-col items-center gap-0.5">
-                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="w-px h-3 bg-slate-300"/>
                   <div className="text-[10px] text-slate-500 font-semibold">xorshift128+(masterSeed ⊕ 0xDEADBEEF) → 32 bytes</div>
-                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                  <ArrowDown className="w-4 h-4 text-slate-400"/>
                 </div>
 
                 {/* Master Key */}
-                <div className="bg-violet-950 border border-violet-700 rounded-xl px-6 py-3 text-center">
-                  <div className="text-[10px] text-violet-400 font-semibold uppercase mb-1">Master Key (256-bit)</div>
-                  <div className="font-mono text-violet-200 text-xs">{trace.masterKey.slice(0,24)}<span className="text-violet-600">…</span>{trace.masterKey.slice(-24)}</div>
+                <div className="bg-violet-50 border border-violet-200 rounded-xl px-6 py-3 text-center">
+                  <div className="text-[10px] text-violet-600 font-semibold uppercase mb-1">Master Key (256-bit)</div>
+                  <div className="font-mono text-violet-700 text-xs">{trace.masterKey.slice(0,24)}<span className="text-violet-400">…</span>{trace.masterKey.slice(-24)}</div>
                 </div>
 
                 {/* Master Key → 4 Round Keys arrow */}
                 <div className="flex flex-col items-center gap-0.5">
-                  <div className="w-px h-3 bg-slate-600"/>
+                  <div className="w-px h-3 bg-slate-300"/>
                   <div className="text-[10px] text-slate-500 font-semibold">derive 4 round keys via rolling mixer (each is a fresh 256-bit key)</div>
-                  <ArrowDown className="w-4 h-4 text-slate-500"/>
+                  <ArrowDown className="w-4 h-4 text-slate-400"/>
                 </div>
 
                 {/* 4 Round Keys */}
                 <div className="grid grid-cols-4 gap-2">
                   {trace.keys.map((k, i) => {
-                    const bgs = ["bg-blue-950 border-blue-800","bg-sky-950 border-sky-800","bg-teal-950 border-teal-800","bg-emerald-950 border-emerald-800"];
-                    const texts = ["text-blue-300","text-sky-300","text-teal-300","text-emerald-300"];
+                    const bgs = ["bg-blue-50 border-blue-200","bg-sky-50 border-sky-200","bg-teal-50 border-teal-200","bg-emerald-50 border-emerald-200"];
+                    const texts = ["text-blue-700","text-sky-700","text-teal-700","text-emerald-700"];
                     return (
                       <div key={i} className={`${bgs[i]} border rounded-xl p-3 text-center`}>
                         <div className={`text-[10px] font-bold uppercase mb-1 ${texts[i]}`}>Key {i+1}</div>
@@ -1478,15 +1478,15 @@ export function GuideSection() {
 
                 {/* 4-round label */}
                 <div className="flex flex-col items-center gap-0.5 pt-1">
-                  <div className="w-px h-2 bg-slate-600"/>
-                  <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">4-round character shifting</div>
-                  <div className="w-px h-2 bg-slate-600"/>
+                  <div className="w-px h-2 bg-slate-300"/>
+                  <div className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">4-round character shifting</div>
+                  <div className="w-px h-2 bg-slate-300"/>
                 </div>
 
                 {/* 4 Encryption Rounds */}
                 {[0,1,2,3].map(ri => {
-                  const bgs = ["bg-blue-950 border-blue-800","bg-sky-950 border-sky-800","bg-teal-950 border-teal-800","bg-emerald-950 border-emerald-800"];
-                  const textCols = ["text-blue-300","text-sky-300","text-teal-300","text-emerald-300"];
+                  const bgs = ["bg-blue-50 border-blue-200","bg-sky-50 border-sky-200","bg-teal-50 border-teal-200","bg-emerald-50 border-emerald-200"];
+                  const textCols = ["text-blue-700","text-sky-700","text-teal-700","text-emerald-700"];
                   const ks = trace.ksFirstBytes[ri].slice(0,4);
                   const shifts = trace.encShifts[ri].slice(0,4).map(s => {
                     if (!s.changed) return "—";
@@ -1495,19 +1495,19 @@ export function GuideSection() {
                   return (
                     <div key={ri} className={`border ${bgs[ri].split(" ")[1]} rounded-xl p-3`}>
                       <div className="flex items-center gap-2">
-                        <div className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
-                          <div className="text-[9px] text-slate-400 mb-0.5">{ri === 0 ? "Input" : `R${ri} out`}</div>
-                          <div className="font-mono font-bold text-white text-sm truncate">{trace.encStages[ri]}</div>
+                        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
+                          <div className="text-[9px] text-slate-500 mb-0.5">{ri === 0 ? "Input" : `R${ri} out`}</div>
+                          <div className="font-mono font-bold text-slate-800 text-sm truncate">{trace.encStages[ri]}</div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-600 shrink-0"/>
+                        <ArrowRight className="w-4 h-4 text-slate-400 shrink-0"/>
                         <div className={`${bgs[ri].split(" ")[0]} border ${bgs[ri].split(" ")[1]} rounded-lg px-3 py-2 flex-1`}>
                           <div className={`font-bold text-[10px] ${textCols[ri]} mb-1`}>Round {ri+1} — Key {ri+1} + xorshift128+</div>
-                          <div className="text-[9px] text-slate-400">Keystream: {ks.join(", ")} → shifts: {shifts.join(", ")}</div>
+                          <div className="text-[9px] text-slate-500">Keystream: {ks.join(", ")} → shifts: {shifts.join(", ")}</div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-slate-600 shrink-0"/>
-                        <div className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
-                          <div className="text-[9px] text-slate-400 mb-0.5">After R{ri+1}</div>
-                          <div className={`font-mono font-bold text-sm truncate ${ri === 3 ? "text-green-300" : "text-white"}`}>{trace.encStages[ri+1]}</div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 shrink-0"/>
+                        <div className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-center shrink-0 w-[90px]">
+                          <div className="text-[9px] text-slate-500 mb-0.5">After R{ri+1}</div>
+                          <div className={`font-mono font-bold text-sm truncate ${ri === 3 ? "text-green-700" : "text-slate-800"}`}>{trace.encStages[ri+1]}</div>
                         </div>
                       </div>
                     </div>
@@ -1515,18 +1515,18 @@ export function GuideSection() {
                 })}
 
                 {/* Full transformation chain strip */}
-                <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div className="bg-white border border-slate-200 rounded-xl p-4">
                   <div className="text-[10px] text-slate-500 text-center mb-3 uppercase font-semibold tracking-wide">Full transformation chain</div>
                   <div className="flex items-center justify-center gap-1 flex-wrap">
                     {trace.encStages.map((stage, i) => (
                       <>
-                        <div key={`s${i}`} className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg border ${i === 0 ? "text-blue-300 bg-blue-900/40 border-blue-700" : i === 4 ? "text-green-300 bg-green-900/40 border-green-700" : "text-slate-300 bg-slate-800 border-slate-700"}`}>
+                        <div key={`s${i}`} className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg border ${i === 0 ? "text-blue-700 bg-blue-100 border-blue-200" : i === 4 ? "text-green-700 bg-green-100 border-green-200" : "text-slate-600 bg-slate-100 border-slate-200"}`}>
                           {stage}
                         </div>
                         {i < 4 && (
                           <div key={`a${i}`} className="flex flex-col items-center shrink-0">
-                            <ArrowRight className="w-4 h-4 text-slate-600"/>
-                            <span className="text-[8px] text-slate-600">R{i+1}</span>
+                            <ArrowRight className="w-4 h-4 text-slate-400"/>
+                            <span className="text-[8px] text-slate-400">R{i+1}</span>
                           </div>
                         )}
                       </>
@@ -1535,27 +1535,27 @@ export function GuideSection() {
                 </div>
 
                 {/* Reversible section */}
-                <div className="bg-violet-950 border border-violet-800 rounded-xl p-4 text-center">
-                  <div className="font-bold text-violet-300 mb-2 text-sm">↔️ Reversible with the same keys</div>
-                  <div className="text-[10px] text-violet-400 mb-3">
+                <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-center">
+                  <div className="font-bold text-violet-700 mb-2 text-sm">↔️ Reversible with the same keys</div>
+                  <div className="text-[10px] text-violet-600 mb-3">
                     Decrypt: run rounds {[4,3,2,1].join(" → ")} (reverse order)
                   </div>
                   <div className="flex items-center justify-center gap-1 flex-wrap mb-3">
                     {trace.decStages.map((stage, i) => (
                       <>
-                        <div key={`ds${i}`} className={`font-mono font-bold text-xs px-2 py-1 rounded border ${i === 0 ? "text-green-300 bg-green-900/40 border-green-700" : i === 4 ? "text-blue-300 bg-blue-900/40 border-blue-700" : "text-slate-300 bg-slate-800 border-slate-700"}`}>
+                        <div key={`ds${i}`} className={`font-mono font-bold text-xs px-2 py-1 rounded border ${i === 0 ? "text-green-700 bg-green-100 border-green-200" : i === 4 ? "text-blue-700 bg-blue-100 border-blue-200" : "text-slate-600 bg-slate-100 border-slate-200"}`}>
                           {stage}
                         </div>
                         {i < 4 && (
                           <div key={`da${i}`} className="flex flex-col items-center shrink-0">
-                            <ArrowRight className="w-3 h-3 text-violet-700"/>
-                            <span className="text-[8px] text-violet-700">K{4-i}</span>
+                            <ArrowRight className="w-3 h-3 text-violet-400"/>
+                            <span className="text-[8px] text-violet-500">K{4-i}</span>
                           </div>
                         )}
                       </>
                     ))}
                   </div>
-                  <span className={`text-xs font-bold px-3 py-1 rounded-full ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-700 text-green-200" : "bg-red-800 text-red-200"}`}>
+                  <span className={`text-xs font-bold px-3 py-1 rounded-full border ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-100 text-green-800 border-green-300" : "bg-red-100 text-red-800 border-red-300"}`}>
                     {trace.finalDecrypted === (cellValue || "A") ? `✓  "${trace.finalEncrypted}" → "${trace.finalDecrypted}" — matches original exactly` : `⚠ Mismatch: got "${trace.finalDecrypted}"`}
                   </span>
                 </div>
@@ -1571,35 +1571,35 @@ export function GuideSection() {
             </div>
 
             {/* Big journey combined */}
-            <div className="rounded-2xl bg-slate-900 p-8">
+            <div className="rounded-2xl bg-slate-50 border border-slate-200 p-8">
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-4">🔐 Encryption (R1 → R2 → R3 → R4)</div>
+                  <div className="text-slate-600 text-xs font-bold uppercase tracking-wide mb-4">🔐 Encryption (R1 → R2 → R3 → R4)</div>
                   <div className="space-y-2">
                     {trace.encStages.map((stage, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-16 text-xs text-slate-500 text-right shrink-0">{i === 0 ? "Original" : `After R${i}`}</div>
-                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-blue-300 bg-blue-900/50" : i === 4 ? "text-green-300 bg-green-900/50" : "text-slate-300 bg-slate-800"}`}>{stage}</div>
-                        {i < trace.encStages.length - 1 && <div className="text-[10px] text-slate-600 shrink-0">K{i+1}</div>}
+                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-blue-700 bg-blue-100" : i === 4 ? "text-green-700 bg-green-100" : "text-slate-600 bg-slate-100"}`}>{stage}</div>
+                        {i < trace.encStages.length - 1 && <div className="text-[10px] text-slate-500 shrink-0">K{i+1}</div>}
                       </div>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <div className="text-slate-400 text-xs font-bold uppercase tracking-wide mb-4">🔓 Decryption (R4 → R3 → R2 → R1)</div>
+                  <div className="text-slate-600 text-xs font-bold uppercase tracking-wide mb-4">🔓 Decryption (R4 → R3 → R2 → R1)</div>
                   <div className="space-y-2">
                     {trace.decStages.map((stage, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-16 text-xs text-slate-500 text-right shrink-0">{i === 0 ? "Encrypted" : `Undo R${4-(i-1)}`}</div>
-                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-green-300 bg-green-900/50" : i === 4 ? "text-blue-300 bg-blue-900/50" : "text-slate-300 bg-slate-800"}`}>{stage}</div>
-                        {i < trace.decStages.length - 1 && <div className="text-[10px] text-slate-600 shrink-0">K{4-i}</div>}
+                        <div className={`font-mono font-bold text-sm px-3 py-1.5 rounded-lg flex-1 min-w-0 truncate ${i === 0 ? "text-green-700 bg-green-100" : i === 4 ? "text-blue-700 bg-blue-100" : "text-slate-600 bg-slate-100"}`}>{stage}</div>
+                        {i < trace.decStages.length - 1 && <div className="text-[10px] text-slate-500 shrink-0">K{4-i}</div>}
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="mt-6 border-t border-slate-700 pt-5 text-center">
-                <span className={`inline-block text-sm font-semibold px-4 py-2 rounded-full ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-800 text-green-200" : "bg-red-900 text-red-200"}`}>
+              <div className="mt-6 border-t border-slate-200 pt-5 text-center">
+                <span className={`inline-block text-sm font-semibold px-4 py-2 rounded-full border ${trace.finalDecrypted === (cellValue || "A") ? "bg-green-100 text-green-800 border-green-300" : "bg-red-100 text-red-800 border-red-300"}`}>
                   {trace.finalDecrypted === (cellValue || "A") ? `✅  "${cellValue || "A"}" → "${trace.finalEncrypted}" → "${trace.finalDecrypted}" — Perfect round-trip!` : `⚠ Decrypted "${trace.finalDecrypted}" ≠ original "${cellValue || "A"}"`}
                 </span>
               </div>
@@ -1686,10 +1686,10 @@ export function GuideSection() {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 bg-slate-900 rounded-xl p-4 text-center">
-                <div className="text-slate-400 text-xs font-semibold uppercase mb-1">Brute-force search space</div>
-                <div className="font-mono text-green-300 font-bold text-lg">(2³²)⁴ = 2¹²⁸ ≈ 3.4 × 10³⁸</div>
-                <div className="text-slate-400 text-xs mt-1">combinations of 4 ordered 32-bit seeds alone</div>
+              <div className="mt-4 bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                <div className="text-slate-600 text-xs font-semibold uppercase mb-1">Brute-force search space</div>
+                <div className="font-mono text-emerald-700 font-bold text-lg">(2³²)⁴ = 2¹²⁸ ≈ 3.4 × 10³⁸</div>
+                <div className="text-slate-600 text-xs mt-1">combinations of 4 ordered 32-bit seeds alone</div>
                 <div className="text-slate-500 text-xs mt-1">At 10¹⁵ guesses/second, this would take longer than the age of the universe.</div>
               </div>
             </BigCard>
