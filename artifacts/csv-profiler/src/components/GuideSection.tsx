@@ -577,7 +577,7 @@ export function GuideSection() {
 
         {/* ══ STEP 0: Setup ══════════════════════════════════════════ */}
         {step === 0 && (
-          <div className="max-w-3xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             <div className="text-center">
               <div className="text-5xl mb-4">👋</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Let's See How Anonymization Works!</h2>
@@ -716,14 +716,14 @@ export function GuideSection() {
 
         {/* ══ STEP 1: Keys ════════════════════════════════════════════ */}
         {step === 1 && (
-          <div className="max-w-3xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             <div className="text-center">
               <div className="text-5xl mb-4">🔑</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Making the Secret Keys</h2>
               <p className="text-lg text-slate-500 leading-relaxed">
-                Your 4 seed numbers are blended together into a single <strong>master seed</strong>.<br />
-                That master seed expands into a <strong>1024-bit master key</strong>, which is split into<br />
-                <strong>4 independent 256-bit round keys</strong>. Here's exactly how.
+                Your 4 seed numbers are folded into a single <strong>32-bit master seed</strong>.<br />
+                That master seed expands into one <strong>256-bit master key</strong>, from which<br />
+                <strong>4 independent 256-bit round keys are derived</strong> via a rolling mixer. Here's exactly how.
               </p>
             </div>
 
@@ -763,16 +763,30 @@ export function GuideSection() {
 
             {/* Phase 1 — Seed Folding */}
             <BigCard color="bg-white border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 1 — Fold Seeds into Master Seed</h3>
-              <p className="text-slate-500 text-sm mb-5">All 4 seeds are blended into a <strong>single 32-bit master seed</strong> using a rolling accumulator. Every seed changes every subsequent accumulator state — the sequence is cryptographically significant.</p>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 1 — Fold All 4 Seeds into One Master Seed</h3>
+              <p className="text-slate-500 text-sm mb-2 leading-relaxed">
+                We maintain a single 32-bit <strong>rolling accumulator</strong> that starts at the golden-ratio constant and is updated once per seed using a <em>Horner-style multiply-XOR fold</em> followed by a MurmurHash3 avalanche mix. After processing all 4 seeds the final accumulator value is the <strong>master seed</strong>. Because every seed feeds into every subsequent multiply/XOR, reordering any two seeds produces a completely different master seed.
+              </p>
+              <div className="mb-5 bg-slate-50 rounded-xl border border-slate-200 p-4 text-xs font-mono space-y-1 text-slate-700">
+                <div className="text-slate-400 font-semibold uppercase text-[10px] mb-2">General formula applied for each seed sᵢ:</div>
+                <div><span className="text-blue-600">A:</span>  rolling ← (rolling × 0x9E3779B9) ⊕ (sᵢ &gt;&gt;&gt; 0)    <span className="text-slate-400">// Horner multiply then XOR-mix with seed</span></div>
+                <div><span className="text-violet-600">B:</span>  rolling ← rolling ⊕ (rolling &gt;&gt;&gt; 16)              <span className="text-slate-400">// Avalanche mix #1 — spread high bits downward</span></div>
+                <div><span className="text-amber-600">C:</span>  rolling ← rolling × 0x85EBCA6B                     <span className="text-slate-400">// MurmurHash3 constant — maximises bit avalanche</span></div>
+                <div><span className="text-emerald-600">D:</span>  rolling ← rolling ⊕ (rolling &gt;&gt;&gt; 13)              <span className="text-slate-400">// Avalanche mix #2 — spread mid bits downward</span></div>
+                <div className="text-slate-400 mt-1">All arithmetic is unsigned 32-bit (truncated with &gt;&gt;&gt; 0 after each multiply)</div>
+              </div>
 
               <div className="flex gap-4 items-start mb-5">
-                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0">0</div>
-                <div>
+                <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center shrink-0 text-sm">0</div>
+                <div className="flex-1">
                   <div className="font-semibold text-slate-800 mb-1">Starting point: the Golden Ratio constant</div>
-                  <p className="text-slate-500 text-sm mb-2">We don't start from zero — we start from <strong>0x9E3779B9</strong> (2,654,435,769 in decimal). This number comes from multiplying the golden ratio φ = 1.618… by 2³² and rounding. It has excellent bit-distribution properties and gives our accumulator a high-entropy starting state.</p>
-                  <div className="bg-slate-900 rounded-lg px-4 py-2 font-mono text-emerald-300 text-sm inline-block">
-                    rolling₀ = 0x9E3779B9 = 2,654,435,769
+                  <p className="text-slate-500 text-sm mb-2">
+                    We don't start from zero — we start from <strong>0x9E3779B9</strong>. This is the fractional part of the golden ratio φ = 1.6180339887… multiplied by 2³² = 4,294,967,296, then rounded to the nearest integer. Golden-ratio-based constants have excellent bit-diffusion properties (known as <em>Knuth's multiplicative hash</em>).
+                  </p>
+                  <div className="font-mono text-xs bg-slate-900 text-emerald-300 rounded-lg px-4 py-3 inline-block space-y-1">
+                    <div>φ = 1.6180339887…</div>
+                    <div>φ × 2³² = 6,948,403,464.3… → fractional part × 2³² = 2,654,435,769</div>
+                    <div className="text-white font-bold mt-1">rolling₀ = 0x9E3779B9 = 2,654,435,769</div>
                   </div>
                 </div>
               </div>
@@ -780,45 +794,121 @@ export function GuideSection() {
               {trace.keyDerivSteps.map((kd, i) => {
                 const bgColors = ["bg-blue-50 border-blue-200","bg-violet-50 border-violet-200","bg-amber-50 border-amber-200","bg-emerald-50 border-emerald-200"];
                 const textColors = ["text-blue-700","text-violet-700","text-amber-700","text-emerald-700"];
+                const headerBg = ["bg-blue-600","bg-violet-600","bg-amber-600","bg-emerald-700"];
                 const isLast = i === 3;
+                const h8 = (n: number) => "0x" + n.toString(16).toUpperCase().padStart(8, "0");
+                // Intermediates for step A
+                const mulOnly = (Math.imul(kd.rollingBefore, 0x9e3779b9) >>> 0);
+                // Intermediate for step B: shift part
+                const shift16val = (kd.afterMulXor >>> 16);
+                // Intermediate for step C: computed from afterMix1
+                // (afterMul2 already in kd)
+                // Intermediate for step D: shift part
+                const shift13val = (kd.afterMul2 >>> 13);
                 return (
-                  <div key={i} className={`rounded-xl border-2 ${bgColors[i]} p-5 mb-4`}>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className={`w-9 h-9 rounded-full bg-white border-2 ${bgColors[i].split(" ")[1]} font-bold flex items-center justify-center ${textColors[i]} text-base`}>{i+1}</div>
-                      <div>
-                        <div className={`font-bold text-base ${textColors[i]}`}>Seed {i+1} = {kd.seed}</div>
-                        <div className="text-xs text-slate-400">Rolling before: <span className="font-mono">{("0x"+kd.rollingBefore.toString(16).toUpperCase().padStart(8,"0"))}</span></div>
+                  <div key={i} className={`rounded-xl border-2 ${bgColors[i]} mb-5`}>
+                    {/* Header */}
+                    <div className={`${headerBg[i]} rounded-t-xl px-5 py-3 flex items-center justify-between`}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-white/20 font-bold flex items-center justify-center text-white text-base">{i+1}</div>
+                        <div>
+                          <div className="font-bold text-white text-base">Seed {i+1} = {kd.seed} (decimal) = {h8(kd.seed)} (hex)</div>
+                          <div className="text-white/70 text-xs">Rolling accumulator coming in: <span className="font-mono text-white">{h8(kd.rollingBefore)} = {kd.rollingBefore.toLocaleString()}</span></div>
+                        </div>
                       </div>
-                      {isLast && <div className="ml-auto text-xs font-bold bg-indigo-600 text-white px-3 py-1 rounded-full">→ Master Seed</div>}
+                      {isLast && <div className="text-xs font-bold bg-white/20 text-white px-3 py-1 rounded-full border border-white/30">→ Produces Master Seed</div>}
                     </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
-                        <span className="font-bold text-slate-500 w-6 shrink-0">A</span>
-                        <span className="text-slate-600 flex-1">Multiply by golden-ratio prime, then XOR with seed:</span>
-                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMulXor.toString(16).toUpperCase().padStart(8,"0")}</span>
+
+                    {/* Steps */}
+                    <div className="p-5 space-y-3">
+
+                      {/* Step A */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-bold text-blue-600 text-sm bg-blue-50 px-2 py-0.5 rounded">A</span>
+                          <span className="font-semibold text-slate-700 text-sm">Horner multiply, then XOR with seed</span>
+                          <span className="text-[10px] text-slate-400 font-mono ml-auto">rolling ← (rolling × 0x9E3779B9) ⊕ seed</span>
+                        </div>
+                        <div className="font-mono text-xs space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                          <div className="text-slate-500">Step A1 — multiply (32-bit truncated):</div>
+                          <div className="pl-3"><span className="text-blue-700">{h8(kd.rollingBefore)}</span> × 0x9E3779B9 = <span className="text-amber-700">{h8(mulOnly)}</span> <span className="text-slate-400">(lower 32 bits kept)</span></div>
+                          <div className="text-slate-500 mt-1">Step A2 — XOR with seed:</div>
+                          <div className="pl-3"><span className="text-amber-700">{h8(mulOnly)}</span> ⊕ <span className="text-green-700">{h8(kd.seed >>> 0)}</span> = <span className="font-bold text-slate-900">{h8(kd.afterMulXor)}</span></div>
+                        </div>
+                        <div className="flex items-center justify-end mt-2">
+                          <span className="text-xs text-slate-400 mr-2">Result after A:</span>
+                          <span className="font-mono font-bold text-slate-800 text-sm bg-slate-100 px-3 py-1 rounded-lg">{h8(kd.afterMulXor)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
-                        <span className="font-bold text-slate-500 w-6 shrink-0">B</span>
-                        <span className="text-slate-600 flex-1">Avalanche mix #1 — XOR with its own right-shift (16 bits):</span>
-                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMix1.toString(16).toUpperCase().padStart(8,"0")}</span>
+
+                      {/* Step B */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-bold text-violet-600 text-sm bg-violet-50 px-2 py-0.5 rounded">B</span>
+                          <span className="font-semibold text-slate-700 text-sm">Avalanche mix #1 — XOR with right-shift of 16 bits</span>
+                          <span className="text-[10px] text-slate-400 font-mono ml-auto">rolling ← rolling ⊕ (rolling &gt;&gt;&gt; 16)</span>
+                        </div>
+                        <div className="font-mono text-xs space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                          <div className="text-slate-500">Shift 16 bits right (moves top half into bottom half):</div>
+                          <div className="pl-3"><span className="text-violet-700">{h8(kd.afterMulXor)}</span> &gt;&gt;&gt; 16 = <span className="text-amber-700">{h8(shift16val)}</span></div>
+                          <div className="text-slate-500 mt-1">XOR together (mixes high and low halves):</div>
+                          <div className="pl-3"><span className="text-violet-700">{h8(kd.afterMulXor)}</span> ⊕ <span className="text-amber-700">{h8(shift16val)}</span> = <span className="font-bold text-slate-900">{h8(kd.afterMix1)}</span></div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="text-[10px] text-slate-400 leading-relaxed max-w-xs">Purpose: ensures bits in the upper half influence the lower half — a single changed seed bit now affects both halves of the accumulator.</div>
+                          <span className="font-mono font-bold text-slate-800 text-sm bg-slate-100 px-3 py-1 rounded-lg shrink-0 ml-3">{h8(kd.afterMix1)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
-                        <span className="font-bold text-slate-500 w-6 shrink-0">C</span>
-                        <span className="text-slate-600 flex-1">Multiply by MurmurHash3 constant (0x85EBCA6B):</span>
-                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMul2.toString(16).toUpperCase().padStart(8,"0")}</span>
+
+                      {/* Step C */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-bold text-amber-600 text-sm bg-amber-50 px-2 py-0.5 rounded">C</span>
+                          <span className="font-semibold text-slate-700 text-sm">Multiply by MurmurHash3 constant</span>
+                          <span className="text-[10px] text-slate-400 font-mono ml-auto">rolling ← rolling × 0x85EBCA6B</span>
+                        </div>
+                        <div className="font-mono text-xs space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                          <div className="text-slate-500">Multiply (32-bit truncated — lower 32 bits of the 64-bit product):</div>
+                          <div className="pl-3"><span className="text-amber-700">{h8(kd.afterMix1)}</span> × 0x85EBCA6B = <span className="font-bold text-slate-900">{h8(kd.afterMul2)}</span></div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="text-[10px] text-slate-400 leading-relaxed max-w-xs">0x85EBCA6B is the MurmurHash3 finaliser constant, chosen because it maximises the <em>avalanche effect</em> — every input bit influences every output bit.</div>
+                          <span className="font-mono font-bold text-slate-800 text-sm bg-slate-100 px-3 py-1 rounded-lg shrink-0 ml-3">{h8(kd.afterMul2)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 bg-white rounded-lg p-3 border border-slate-200">
-                        <span className="font-bold text-slate-500 w-6 shrink-0">D</span>
-                        <span className="text-slate-600 flex-1">Avalanche mix #2 — XOR with its own right-shift (13 bits):</span>
-                        <span className="font-mono font-bold text-slate-800">{"0x"+kd.afterMix2.toString(16).toUpperCase().padStart(8,"0")}</span>
+
+                      {/* Step D */}
+                      <div className="bg-white rounded-xl border border-slate-200 p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-bold text-emerald-600 text-sm bg-emerald-50 px-2 py-0.5 rounded">D</span>
+                          <span className="font-semibold text-slate-700 text-sm">Avalanche mix #2 — XOR with right-shift of 13 bits</span>
+                          <span className="text-[10px] text-slate-400 font-mono ml-auto">rolling ← rolling ⊕ (rolling &gt;&gt;&gt; 13)</span>
+                        </div>
+                        <div className="font-mono text-xs space-y-1 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                          <div className="text-slate-500">Shift 13 bits right:</div>
+                          <div className="pl-3"><span className="text-emerald-700">{h8(kd.afterMul2)}</span> &gt;&gt;&gt; 13 = <span className="text-amber-700">{h8(shift13val)}</span></div>
+                          <div className="text-slate-500 mt-1">XOR together:</div>
+                          <div className="pl-3"><span className="text-emerald-700">{h8(kd.afterMul2)}</span> ⊕ <span className="text-amber-700">{h8(shift13val)}</span> = <span className="font-bold text-slate-900">{h8(kd.afterMix2)}</span></div>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="text-[10px] text-slate-400 leading-relaxed max-w-xs">A second shift-XOR using 13 (not 16) ensures the remaining correlation between adjacent bits is eliminated. Together, steps B+D form the complete MurmurHash3 finaliser.</div>
+                          <span className="font-mono font-bold text-slate-800 text-sm bg-slate-100 px-3 py-1 rounded-lg shrink-0 ml-3">{h8(kd.afterMix2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Rolling after summary */}
+                      <div className={`rounded-lg p-4 ${isLast ? "bg-indigo-900 border border-indigo-700" : "bg-slate-800 border border-slate-700"}`}>
+                        <div className={`text-xs font-semibold uppercase mb-2 ${isLast ? "text-indigo-300" : "text-slate-400"}`}>
+                          {isLast ? "✦ Master Seed — encodes all 4 seeds and their order (32-bit)" : `Rolling accumulator after seed ${i+1}`}
+                        </div>
+                        <div className={`font-mono font-bold ${isLast ? "text-indigo-200 text-lg" : "text-white text-sm"}`}>
+                          {h8(kd.rollingAfter)} <span className="text-slate-400 font-normal text-xs">=</span> <span className={isLast ? "text-indigo-100" : "text-slate-300"}>{kd.rollingAfter.toLocaleString()}</span>
+                        </div>
+                        {isLast && (
+                          <div className="text-indigo-400 text-xs mt-2">This single 32-bit value is the irreversible fingerprint of seeds [{seeds.join(", ")}] in that exact order. It drives everything that follows.</div>
+                        )}
                       </div>
                     </div>
-                    {isLast && (
-                      <div className="mt-3 rounded-lg p-3 bg-indigo-900 border border-indigo-700">
-                        <div className="text-xs font-semibold uppercase text-indigo-300 mb-1">Master Seed (32-bit — all 4 seeds encoded)</div>
-                        <div className="font-mono text-base font-bold text-indigo-200">{"0x" + kd.rollingAfter.toString(16).toUpperCase().padStart(8, "0")} = {kd.rollingAfter}</div>
-                      </div>
-                    )}
                   </div>
                 );
               })}
@@ -826,52 +916,156 @@ export function GuideSection() {
 
             {/* Phase 2 — Master Key */}
             <BigCard color="bg-white border-indigo-200">
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 2 — Expand Master Seed into Master Key (256 bits)</h3>
-              <p className="text-slate-500 text-sm mb-4">The 32-bit master seed is fed into <strong>xorshift128+</strong> seeded with <span className="font-mono bg-slate-100 px-1 rounded text-xs">masterSeed ⊕ 0xDEADBEEF</span>, sampling 32 bytes → one <strong>256-bit master key</strong> (64 hex chars).</p>
-              <div className="bg-slate-900 rounded-xl p-5 mb-4">
-                <div className="text-slate-400 text-xs font-bold uppercase mb-2">Master Key (256 bits = 64 hex chars)</div>
-                <div className="font-mono text-xs break-all text-indigo-300 leading-relaxed">{trace.masterKey}</div>
-              </div>
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-800">
-                <strong>This is your root secret.</strong> All 4 seeds together produce exactly one master key. Knowing the master key is equivalent to knowing all 4 seeds in order — the seeds are just a memorable way to express the master key.
-              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 2 — Expand Master Seed into One 256-bit Master Key</h3>
+              <p className="text-slate-500 text-sm mb-4 leading-relaxed">
+                The 32-bit master seed is expanded into <strong>32 random bytes (256 bits)</strong> — the <em>master key</em>. We do this by feeding the seed into the <strong>xorshift128+</strong> pseudo-random number generator (PRNG) and sampling 32 consecutive outputs, each converted to one byte (0–255). The seed is first mixed with <span className="font-mono bg-slate-100 px-1 rounded">0xDEADBEEF</span> to decorrelate the PRNG initialisation from the master seed itself.
+              </p>
+
+              {(() => {
+                const h8 = (n: number) => "0x" + n.toString(16).toUpperCase().padStart(8, "0");
+                const prngseed = (trace.masterSeed ^ 0xdeadbeef) >>> 0;
+                const a0 = ((prngseed ^ 0x9e3779b9) >>> 0) || 1;
+                const b0 = ((prngseed ^ 0x6c62272e) >>> 0) || 2;
+                return (
+                  <div className="space-y-4">
+                    {/* Step 1: seed mixing */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500 uppercase mb-3">Step 2a — Mix the master seed into the PRNG seed</div>
+                      <div className="font-mono text-xs space-y-1.5">
+                        <div>masterSeed               = <span className="text-indigo-600 font-bold">{h8(trace.masterSeed)}</span> = {trace.masterSeed.toLocaleString()}</div>
+                        <div>prngseed = masterSeed ⊕ 0xDEADBEEF</div>
+                        <div className="pl-4">= <span className="text-indigo-600">{h8(trace.masterSeed)}</span> ⊕ <span className="text-red-600">0xDEADBEEF</span></div>
+                        <div className="pl-4">= <span className="font-bold text-emerald-700">{h8(prngseed)}</span></div>
+                      </div>
+                    </div>
+
+                    {/* Step 2: PRNG init */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500 uppercase mb-3">Step 2b — Initialise xorshift128+ state (two 32-bit registers a, b)</div>
+                      <div className="font-mono text-xs space-y-1.5">
+                        <div>a₀ = prngseed ⊕ 0x9E3779B9 = <span className="text-blue-600">{h8(prngseed)}</span> ⊕ 0x9E3779B9 = <span className="font-bold text-blue-800">{h8(a0)}</span> <span className="text-slate-400">{a0 === 0 ? "(→ forced to 1, degenerate guard)" : ""}</span></div>
+                        <div>b₀ = prngseed ⊕ 0x6C62272E = <span className="text-blue-600">{h8(prngseed)}</span> ⊕ 0x6C62272E = <span className="font-bold text-blue-800">{h8(b0)}</span> <span className="text-slate-400">{b0 === 0 ? "(→ forced to 2, degenerate guard)" : ""}</span></div>
+                        <div className="text-slate-400 text-[10px] mt-1">0x6C62272E is the FNV prime — a different constant from the golden ratio to ensure a and b start with uncorrelated bits</div>
+                      </div>
+                    </div>
+
+                    {/* Step 3: iteration */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500 uppercase mb-3">Step 2c — Each PRNG call advances the state and produces one byte</div>
+                      <div className="font-mono text-[10px] bg-slate-900 text-slate-300 rounded-lg p-3 space-y-0.5 mb-3">
+                        <div className="text-emerald-400 text-xs mb-1">// xorshift128+ iterate (called 32 times):</div>
+                        <div>a ← a ⊕ (a &lt;&lt; 13);   a = a &gt;&gt;&gt; 0   <span className="text-slate-500">// left-shift XOR</span></div>
+                        <div>a ← a ⊕ (a &gt;&gt; 17)              <span className="text-slate-500">// right-shift XOR</span></div>
+                        <div>a ← a ⊕ (a &lt;&lt;  5);   a = a &gt;&gt;&gt; 0   <span className="text-slate-500">// left-shift XOR</span></div>
+                        <div className="mt-1">b ← b ⊕ (b &gt;&gt;  7);   b = b &gt;&gt;&gt; 0</div>
+                        <div>b ← b ⊕ (b &lt;&lt;  9);   b = b &gt;&gt;&gt; 0</div>
+                        <div>b ← b ⊕ (b &gt;&gt;  8);   b = b &gt;&gt;&gt; 0</div>
+                        <div className="mt-1 text-yellow-300">raw = (a + b) &gt;&gt;&gt; 0               <span className="text-slate-500">// sum of both registers (32-bit)</span></div>
+                        <div className="text-yellow-300">byte = Math.floor(raw / 0x100000000 × 256)  <span className="text-slate-500">// scale to 0–255</span></div>
+                      </div>
+                      <div className="text-xs text-slate-500">32 such calls produce 32 bytes (256 bits). Each call is deterministic given the seed, so the same master seed always produces the same 32 bytes.</div>
+                    </div>
+
+                    {/* Master Key display */}
+                    <div className="bg-indigo-950 border border-indigo-700 rounded-xl p-5">
+                      <div className="text-indigo-300 text-xs font-bold uppercase mb-2">Master Key — 256 bits = 32 bytes = 64 hex characters</div>
+                      <div className="font-mono text-sm break-all text-indigo-100 leading-relaxed tracking-wider">
+                        {trace.masterKey.match(/.{1,8}/g)?.map((chunk, ci) => (
+                          <span key={ci} className={`${ci % 2 === 0 ? "text-indigo-200" : "text-indigo-400"} mr-1`}>{chunk}</span>
+                        ))}
+                      </div>
+                      <div className="text-indigo-400 text-[10px] mt-3">Bytes 0–7 shown in groups of 8 hex chars (4 bytes). The first 8 hex chars (<span className="font-mono text-indigo-200">{trace.masterKey.slice(0,8)}</span>) seed Phase 3.</div>
+                    </div>
+
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 text-xs text-indigo-800 leading-relaxed">
+                      <strong>Key insight:</strong> The master key is <em>not</em> split into 4 parts. It is one single 256-bit secret. Phase 3 uses only the first 32 bits of this key as a seed to start a brand-new rolling derivation process that generates 4 entirely separate 256-bit round keys.
+                    </div>
+                  </div>
+                );
+              })()}
             </BigCard>
 
             {/* Phase 3 — Rolling Mixer */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-800 rounded-2xl p-6 text-white">
-                <h3 className="font-bold mb-3 text-base">Phase 3 — Derive 4 Round Keys via Rolling Mixer</h3>
-                <p className="text-slate-300 text-sm leading-relaxed mb-4">The master key's first 32 bits seed a new rolling accumulator that derives 4 independent round keys — one per encryption round:</p>
-                <div className="bg-black/30 rounded-lg p-3 font-mono text-xs space-y-2">
-                  <div className="text-emerald-400">r ← masterKey[0..7] ⊕ 0xDEADBEEF</div>
-                  <div className="text-slate-500 text-[10px] mt-1">For i = 0, 1, 2, 3:</div>
-                  <div className="text-slate-400 ml-3">r ← (r × 0x9E3779B9) ⊕ (i × 0x5A5A5A5B)</div>
-                  <div className="text-slate-400 ml-3">r ← r ⊕ (r {">>>"} 16)</div>
-                  <div className="text-slate-400 ml-3">K{"{i+1}"} ← xorshift128+(r) × 256, 32 bytes</div>
-                </div>
-                <p className="text-slate-400 text-xs mt-3">Each round key is a fresh 256-bit key — none shares any bits with the master key or each other.</p>
-              </div>
-              <div className="bg-slate-900 rounded-2xl p-6">
-                <h3 className="text-white font-bold mb-4 text-base">Your 4 round keys:</h3>
-                <div className="space-y-3">
-                  {trace.keys.map((k, i) => {
-                    const colors = ["text-blue-300","text-violet-300","text-amber-300","text-emerald-300"];
-                    return (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded bg-white/10 shrink-0 mt-0.5 ${colors[i]}`}>K{i+1}</span>
-                        <span className={`font-mono text-[10px] break-all leading-relaxed ${colors[i]}`}>{k}</span>
+            <BigCard color="bg-white border-violet-200">
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Phase 3 — Derive 4 Independent Round Keys via Rolling Mixer</h3>
+              <p className="text-slate-500 text-sm mb-4 leading-relaxed">
+                The master key is <strong>not split</strong>. Instead, its first 8 hex characters (32 bits) seed a brand-new rolling accumulator <span className="font-mono bg-slate-100 px-1 rounded">r</span>. For each round index <span className="font-mono bg-slate-100 px-1 rounded">i ∈ {"{0,1,2,3}"}</span>, <span className="font-mono">r</span> is updated with a Horner multiply + XOR (using a round-index-specific constant), then a 16-bit avalanche mix. The updated <span className="font-mono">r</span> seeds a fresh xorshift128+ run that produces <strong>32 bytes = one 256-bit round key</strong>. The four round keys are completely independent — none shares bits with the master key or each other.
+              </p>
+
+              {(() => {
+                const h8 = (n: number) => "0x" + n.toString(16).toUpperCase().padStart(8, "0");
+                const base32 = parseInt(trace.masterKey.slice(0, 8), 16);
+                let r = (base32 ^ 0xdeadbeef) >>> 0;
+                const rSteps: { rBefore: number; afterMul: number; afterXorIdx: number; afterMix16: number; rAfter: number }[] = [];
+                for (let i = 0; i < 4; i++) {
+                  const rBefore = r;
+                  const afterMul = (Math.imul(r, 0x9e3779b9)) >>> 0;
+                  const afterXorIdx = (afterMul ^ (i * 0x5a5a5a5b)) >>> 0;
+                  const afterMix16 = (afterXorIdx ^ (afterXorIdx >>> 16)) >>> 0;
+                  r = afterMix16;
+                  rSteps.push({ rBefore, afterMul, afterXorIdx, afterMix16, rAfter: r });
+                }
+                const roundColors = [
+                  { bg: "bg-blue-50 border-blue-200", hdr: "bg-blue-600", txt: "text-blue-700", mono: "text-blue-800" },
+                  { bg: "bg-violet-50 border-violet-200", hdr: "bg-violet-600", txt: "text-violet-700", mono: "text-violet-800" },
+                  { bg: "bg-amber-50 border-amber-200", hdr: "bg-amber-600", txt: "text-amber-700", mono: "text-amber-800" },
+                  { bg: "bg-emerald-50 border-emerald-200", hdr: "bg-emerald-700", txt: "text-emerald-700", mono: "text-emerald-800" },
+                ];
+
+                return (
+                  <div className="space-y-4">
+                    {/* Starting r */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                      <div className="text-xs font-semibold text-slate-500 uppercase mb-3">Step 3a — Seed the rolling accumulator r from the master key's first 32 bits</div>
+                      <div className="font-mono text-xs space-y-1.5">
+                        <div>masterKey[0..7] = <span className="text-indigo-600 font-bold">{trace.masterKey.slice(0,8)}</span> → as integer = <span className="text-indigo-600">{h8(base32)}</span></div>
+                        <div>r₀ = {h8(base32)} ⊕ 0xDEADBEEF = <span className="font-bold text-emerald-700">{h8((base32 ^ 0xdeadbeef) >>> 0)}</span></div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+                    </div>
+
+                    {/* Per-round derivation */}
+                    {rSteps.map((rs, i) => {
+                      const idxMul = (i * 0x5a5a5a5b) >>> 0;
+                      const c = roundColors[i];
+                      return (
+                        <div key={i} className={`rounded-xl border-2 ${c.bg}`}>
+                          <div className={`${c.hdr} rounded-t-xl px-5 py-2.5 flex items-center justify-between`}>
+                            <div className="text-white font-bold text-sm">Round Key {i+1} — i = {i}</div>
+                            <div className="text-white/70 text-xs font-mono">r coming in: {h8(rs.rBefore)}</div>
+                          </div>
+                          <div className="p-4 space-y-2">
+                            <div className="bg-white rounded-lg border border-slate-200 p-3 font-mono text-xs space-y-1.5">
+                              <div className="text-slate-500">Step 1 — multiply by golden-ratio prime (32-bit truncated):</div>
+                              <div className="pl-3">{h8(rs.rBefore)} × 0x9E3779B9 = <span className="text-amber-700">{h8(rs.afterMul)}</span></div>
+                              <div className="text-slate-500 mt-1">Step 2 — XOR with round-index constant (i × 0x5A5A5A5B = {i} × 0x5A5A5A5B = {h8(idxMul)}):</div>
+                              <div className="pl-3"><span className="text-amber-700">{h8(rs.afterMul)}</span> ⊕ <span className="text-violet-700">{h8(idxMul)}</span> = <span className="text-orange-700">{h8(rs.afterXorIdx)}</span></div>
+                              <div className="text-slate-500 mt-1">Step 3 — avalanche mix (XOR with 16-bit right-shift):</div>
+                              <div className="pl-3"><span className="text-orange-700">{h8(rs.afterXorIdx)}</span> ⊕ ({h8(rs.afterXorIdx)} &gt;&gt;&gt; 16 = {h8(rs.afterXorIdx >>> 16)}) = <span className={`font-bold ${c.mono}`}>{h8(rs.afterMix16)}</span></div>
+                              <div className="text-slate-500 mt-1">Step 4 — feed updated r into xorshift128+, sample 32 bytes:</div>
+                              <div className="pl-3 text-slate-400">K{i+1} = xorshift128+(<span className={c.mono}>{h8(rs.rAfter)}</span>) → 32 bytes (256 bits)</div>
+                            </div>
+                            <div className="bg-white rounded-lg border border-slate-200 p-3">
+                              <div className={`text-[10px] font-bold ${c.txt} uppercase mb-1`}>K{i+1} — 256-bit Round Key:</div>
+                              <div className={`font-mono text-[10px] break-all leading-relaxed ${c.mono}`}>{trace.keys[i]}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 text-xs text-violet-800 leading-relaxed">
+                      <strong>Why multiply by i × 0x5A5A5A5B?</strong> The constant 0x5A5A5A5B ensures round index 0 and round index 1 produce different multipliers — so even if two rounds started with the same <span className="font-mono">r</span>, the resulting round keys would be completely different. Without it, K1 and K2 would be correlated. The constant 0x5A5A5A5B has a bit pattern (01011010…) chosen to differ maximally from 0x9E3779B9.
+                    </div>
+                  </div>
+                );
+              })()}
+            </BigCard>
           </div>
         )}
 
         {/* ══ STEP 2: Encryption ══════════════════════════════════════ */}
         {step === 2 && (
-          <div className="max-w-3xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             <div className="text-center">
               <div className="text-5xl mb-4">🔐</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Scrambling Your Value</h2>
@@ -1041,7 +1235,7 @@ export function GuideSection() {
 
         {/* ══ STEP 3: Decryption ══════════════════════════════════════ */}
         {step === 3 && (
-          <div className="max-w-3xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             <div className="text-center">
               <div className="text-5xl mb-4">🔓</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">Unscrambling the Value</h2>
@@ -1208,7 +1402,7 @@ export function GuideSection() {
 
         {/* ══ STEP 4: Summary ═════════════════════════════════════════ */}
         {step === 4 && (
-          <div className="max-w-3xl mx-auto space-y-8">
+          <div className="w-full space-y-8">
             <div className="text-center">
               <div className="text-5xl mb-4">🎉</div>
               <h2 className="text-3xl font-bold text-slate-800 mb-3">The Full Journey</h2>
@@ -1264,7 +1458,7 @@ export function GuideSection() {
                 {/* Master Key → 4 Round Keys arrow */}
                 <div className="flex flex-col items-center gap-0.5">
                   <div className="w-px h-3 bg-slate-600"/>
-                  <div className="text-[10px] text-slate-500 font-semibold">split into 4 round keys via XOR + rolling mixer</div>
+                  <div className="text-[10px] text-slate-500 font-semibold">derive 4 round keys via rolling mixer (each is a fresh 256-bit key)</div>
                   <ArrowDown className="w-4 h-4 text-slate-500"/>
                 </div>
 
