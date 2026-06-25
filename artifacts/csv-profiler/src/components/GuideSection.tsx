@@ -613,7 +613,7 @@ export function GuideSection() {
               <p className="text-slate-500 text-sm mb-5">Every cell value passes through exactly these 4 stages when anonymized:</p>
               <div className="flex items-stretch gap-0">
                 {[
-                  { num: "1", color: "bg-indigo-600", label: "Seeds → Keys", body: "4 numbers you choose are blended together to produce 4 unique 256-bit keys. The keys depend on all 4 seeds AND their order." },
+                  { num: "1", color: "bg-indigo-600", label: "Seeds → Master Key → Round Keys", body: "4 seeds are folded into 1 master seed (32-bit), expanded into 1 master key (256-bit), then used to derive 4 independent 256-bit round keys. The order of seeds matters — swapping any two changes everything." },
                   { num: "2", color: "bg-blue-500", label: "Key + Column → IV", body: "Each column name is hashed together with its round key to produce a unique Column IV — an address that separates columns from each other." },
                   { num: "3", color: "bg-green-600", label: "IV → Keystream", body: "The key and IV are fed into a fast pseudo-random number generator (xorshift128+), producing a stream of random bytes — one per character." },
                   { num: "4", color: "bg-emerald-700", label: "Keystream → Shift", body: "Each character is shifted within its own alphabet (digit↔digit, letter↔letter) by an amount controlled by the keystream byte. Repeated 4 times." },
